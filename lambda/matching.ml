@@ -3196,6 +3196,10 @@ let combine_extension_constructor loc arg pat_env partial ctx def
     (descr_lambda_list, total1, _pats) =
   let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
   let fail, local_jumps = mk_failaction_neg partial ctx def in
+  let declare_alias offset immediate tag arg loc rest =
+    Llet (Alias, Pgenval, tag,
+          Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc), rest)
+  in
   let lambda1 =
     let consts, nonconsts =
       split_extension_cases (List.map tag_lambda descr_lambda_list) in
@@ -3209,27 +3213,34 @@ let combine_extension_constructor loc arg pat_env partial ctx def
         )
       | Some fail -> (fail, consts, nonconsts)
     in
-    let nonconst_lambda =
+    let nonconsts_lambda =
       match nonconsts with
       | [] -> default
       | _ ->
-          let tag = Ident.create_local "tag" in
+          let tag_constr = Ident.create_local "tag_constr" in
+          let tag_id = Ident.create_local "tag_id" in
           let tests =
             List.fold_right
               (fun (path, act) rem ->
                 let ext = transl_extension_path loc pat_env path in
+                let tag_ext = Ident.create_local "tag_ext" in
                 Lifthenelse
-                  (Lprim (Pintcomp Ceq, [ Lvar tag; ext ], loc), act, rem))
+                    (Lprim (Pintcomp Ceq, [ Lvar tag_id; Lvar tag_ext ], loc), act, rem)
+                |> declare_alias 1 Immediate tag_ext ext loc)
               nonconsts default
           in
-          Llet (Alias, Pgenval, tag,
-                Lprim (Pfield (0, Pointer, Immutable), [ arg ], loc), tests)
+          declare_alias 1 Immediate tag_id (Lvar tag_constr) loc tests
+          |> declare_alias 0 Pointer tag_constr arg loc
     in
     List.fold_right
       (fun (path, act) rem ->
         let ext = transl_extension_path loc pat_env path in
-        Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
-      consts nonconst_lambda
+        let tag_ext = Ident.create_local "tag_ext" in
+        let tag_arg = Ident.create_local "tag_arg" in
+        Lifthenelse (Lprim (Pintcomp Ceq,  [ Lvar tag_arg; Lvar tag_ext ], loc), act, rem)
+          |> declare_alias 1 Immediate tag_ext ext loc
+          |> declare_alias 1 Immediate tag_arg arg loc)
+      consts nonconsts_lambda
   in
   (lambda1, Jumps.union local_jumps total1)
 

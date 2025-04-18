@@ -78,12 +78,15 @@ let f = function
      (function param/2 : int
        (let (*match*/0 =a (field_imm 0 param/2))
          (catch
-           (if (== *match*/0 A/0) (if (field_imm 1 param/2) 1 (exit 11))
-             (exit 11))
+           (if (== (field_int 1 *match*/0) (field_int 1 A/0))
+             (if (field_imm 1 param/2) 1 (exit 11)) (exit 11))
           with (11)
            (if (field_imm 1 param/2)
-             (if (== (field_imm 0 *match*/0) B/0) 2
-               (if (== (field_imm 0 *match*/0) C/0) 3 4))
+             (if (== (field_int 1 (field_imm 0 *match*/0)) (field_int 1 B/0))
+               2
+               (if
+                 (== (field_int 1 (field_imm 0 *match*/0)) (field_int 1 C/0))
+                 3 4))
              (if (field_imm 2 param/2) 12 11))))))
   (apply (field_mut 1 (global Toploop!)) "f" f/0))
 val f : t * bool * bool -> int = <fun>
