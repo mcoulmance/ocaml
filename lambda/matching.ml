@@ -99,6 +99,13 @@ open Printpat.Compat
 module Scoped_location = Debuginfo.Scoped_location
 
 let dbg () = !Clflags.dump_matchcomp
+let dbg_printf () = !Clflags.compile_only
+
+let dbg_printf =
+  if dbg_printf () then
+    Printf.fprintf
+  else
+    Printf.ifprintf
 
 let debugf fmt =
   if dbg ()
@@ -1400,15 +1407,17 @@ let can_group discr pat =
   | Constant (Const_int64 _), Constant (Const_int64 _)
   | Constant (Const_nativeint _), Constant (Const_nativeint _) ->
       true
-  | Construct { cstr_tag = Cstr_extension (p1, _) },
-    Construct { cstr_tag = Cstr_extension (p2, _) }
+  | Construct { cstr_tag = Cstr_extension (_p1, _) },
+    Construct { cstr_tag = Cstr_extension (_p2, _) }
     ->
       (* Extension constructors with distinct names may be equal thanks to
          constructor rebinding. So we need to produce a specialized
          submatrix for each syntactically-distinct constructor (with a threading
          of exits such that each submatrix falls back to the
          potentially-compatible submatrices below it).  *)
-      Path.same p1 p2
+      (* Path.same p1 p2 *)
+      (* CHECKPOINT *)
+      true
   | Construct _, Construct _
   | Tuple _, (Tuple _ | Any)
   | Record _, (Record _ | Any)
@@ -1672,6 +1681,9 @@ and split_no_or cls args def k =
           (Default_environment.cons matrix idef def)
           ((idef, next) :: nexts)
   and should_split group_discr =
+    (* ignore group_discr;
+    false *)
+    (* CHECKPOINT (aucun effet constaté pour l'instant) *)
     match group_discr.pat_desc with
     | Patterns.Head.Construct { cstr_tag = Cstr_extension _ } ->
         (* it is unlikely that we will raise anything, so we split now *)
@@ -1911,6 +1923,7 @@ let split_and_precompile_simplified pm =
   (next, nexts)
 
 let split_and_precompile_half_simplified pm =
+  dbg_printf stderr "\t\t\t\tsplit_and_precompile_half_simplified\n";
   let { me = next }, nexts = split_or pm.cases pm.args pm.default in
   dbg_split_and_precompile pm next nexts;
   (next, nexts)
@@ -3200,38 +3213,38 @@ let combine_extension_constructor loc arg pat_env partial ctx def
     Llet (Alias, Pgenval, tag,
           Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc), rest)
   in
-  let lambda1 =
-    let consts, nonconsts =
-      split_extension_cases (List.map tag_lambda descr_lambda_list) in
-    let default, consts, nonconsts =
-      match fail with
-      | None -> (
-          match (consts, nonconsts) with
-          | _, (_, act) :: rem -> (act, consts, rem)
-          | (_, act) :: rem, _ -> (act, rem, nonconsts)
-          | _ -> assert false
-        )
-      | Some fail -> (fail, consts, nonconsts)
-    in
-    let nonconsts_lambda =
-      match nonconsts with
-      | [] -> default
-      | _ ->
-          let tag_constr = Ident.create_local "tag_constr" in
-          let tag_id = Ident.create_local "tag_id" in
-          let tests =
-            List.fold_right
-              (fun (path, act) rem ->
-                let ext = transl_extension_path loc pat_env path in
-                let tag_ext = Ident.create_local "tag_ext" in
-                Lifthenelse
-                    (Lprim (Pintcomp Ceq, [ Lvar tag_id; Lvar tag_ext ], loc), act, rem)
-                |> declare_alias 1 Immediate tag_ext ext loc)
-              nonconsts default
-          in
-          declare_alias 1 Immediate tag_id (Lvar tag_constr) loc tests
-          |> declare_alias 0 Pointer tag_constr arg loc
-    in
+  let consts, nonconsts =
+    split_extension_cases (List.map tag_lambda descr_lambda_list) in
+  let default, consts, nonconsts =
+    match fail with
+    | None -> (
+        match (consts, nonconsts) with
+        | _, (_, act) :: rem -> (act, consts, rem)
+        | (_, act) :: rem, _ -> (act, rem, nonconsts)
+        | _ -> assert false
+      )
+    | Some fail -> (fail, consts, nonconsts)
+  in
+  let nonconsts_lambda =
+    match nonconsts with
+    | [] -> default
+    | _ ->
+        let tag_constr = Ident.create_local "tag_constr" in
+        let tag_id = Ident.create_local "tag_id" in
+        let tests =
+          List.fold_right
+            (fun (path, act) rem ->
+              let ext = transl_extension_path loc pat_env path in
+              let tag_ext = Ident.create_local "tag_ext" in
+              Lifthenelse
+                  (Lprim (Pintcomp Ceq, [ Lvar tag_id; Lvar tag_ext ], loc), act, rem)
+              |> declare_alias 1 Immediate tag_ext ext loc)
+            nonconsts default
+        in
+        declare_alias 1 Immediate tag_id (Lvar tag_constr) loc tests
+        |> declare_alias 0 Pointer tag_constr arg loc
+  in
+  let consts_lambda =
     List.fold_right
       (fun (path, act) rem ->
         let ext = transl_extension_path loc pat_env path in
@@ -3240,7 +3253,29 @@ let combine_extension_constructor loc arg pat_env partial ctx def
         Lifthenelse (Lprim (Pintcomp Ceq,  [ Lvar tag_arg; Lvar tag_ext ], loc), act, rem)
           |> declare_alias 1 Immediate tag_ext ext loc
           |> declare_alias 1 Immediate tag_arg arg loc)
-      consts nonconsts_lambda
+      consts default
+  in
+  let lambda1 =
+    let idarg = Ident.create_local "arg" in
+    let varg = Lvar idarg in
+    Llet
+      ( Strict,
+        Pgenval,
+        idarg,
+        arg,
+        Lswitch
+          ( Lprim (Pccall prim_obj_tag, [ varg ], loc),
+            {
+              sw_numblocks = 0;
+              sw_blocks = [];
+              sw_numconsts = 249;
+              sw_consts =
+                [ (0, nonconsts_lambda);
+                  (Obj.object_tag, consts_lambda)
+                ];
+              sw_failaction = None
+            },
+            loc ) )
   in
   (lambda1, Jumps.union local_jumps total1)
 
@@ -3600,6 +3635,7 @@ let bind_check kind v arg lam =
   | _, _ -> bind kind v arg lam
 
 let rec comp_match_handlers comp_fun partial ctx first_match next_matches =
+  dbg_printf stderr "\t\t\t\t\tcomp_match_handlers\n";
   match next_matches with
   | [] -> comp_fun partial ctx first_match
   | (_, second_match) :: next_next_matches -> (
@@ -3693,6 +3729,7 @@ let rec compile_match ~scopes repr partial ctx
 
 and compile_match_nonempty ~scopes repr partial ctx
     (m : (args, Typedtree.pattern Non_empty_row.t clause) pattern_matching) =
+  dbg_printf stderr "\t\tcompile_match_nonempty\n";
   match m with
   | { cases = []; args = [] } ->
       begin match comp_exit partial ctx m.default with
@@ -4071,6 +4108,7 @@ let root_arg arg binding_kind =
   { arg; binding_kind; mut = Immutable }
 
 let compile_matching ~scopes loc ~failer repr arg pat_act_list partial =
+  dbg_printf stderr "\tcompile_matching (%d)\n" (List.length pat_act_list);
   let args = [ root_arg arg Strict ] in
   let rows = map_on_rows (fun pat -> (pat, [])) pat_act_list in
   let handler =
@@ -4081,6 +4119,7 @@ let compile_matching ~scopes loc ~failer repr arg pat_act_list partial =
   )
 
 let for_function ~scopes loc repr param pat_act_list partial =
+  dbg_printf stderr "for_function (%d)\n" (List.length pat_act_list);
   compile_matching ~scopes loc ~failer:Raise_match_failure
     repr param pat_act_list partial
 
@@ -4093,10 +4132,12 @@ let for_trywith ~scopes loc param pat_act_list =
      It is important to *not* include location information in
      the reraise (hence the [_noloc]) to avoid seeing this
      silent reraise in exception backtraces. *)
+  dbg_printf stderr "for_trywith (%d)\n" (List.length pat_act_list);
   compile_matching ~scopes loc ~failer:(Reraise_noloc param)
     None param pat_act_list Partial
 
 let for_handler ~scopes loc param cont cont_tail pat_act_list =
+  dbg_printf stderr "for_handler (%d)\n" (List.length pat_act_list);
   compile_matching ~scopes loc
     ~failer:(Reperform_noloc [param; cont; cont_tail])
     None param pat_act_list Partial
@@ -4240,6 +4281,7 @@ let assign_pat ~scopes opt nraise catch_ids loc pat lam =
   List.fold_left push_sublet exit rev_sublets
 
 let for_let ~scopes loc param pat body =
+  dbg_printf stderr "for_let\n";
   match pat.pat_desc with
   | Tpat_any ->
       (* This eliminates a useless variable (and stack slot in bytecode)
@@ -4276,6 +4318,7 @@ let for_let ~scopes loc param pat body =
 
 (* Easy case since variables are available *)
 let for_tupled_function ~scopes loc paraml pats_act_list partial =
+  dbg_printf stderr "for_tupled_function (%d)\n" (List.length pats_act_list);
   let args = List.map (fun id -> root_arg (Lvar id) Strict) paraml in
   let handler =
     toplevel_handler ~scopes loc ~failer:Raise_match_failure
@@ -4396,6 +4439,7 @@ let bind_opt (v, eo) k =
   | Some e -> Lambda.bind Strict v e k
 
 let for_multiple_match ~scopes loc paraml pat_act_list partial =
+  dbg_printf stderr "for_multiple_match (%d)\n" (List.length pat_act_list);
   let v_paraml = List.map param_to_var paraml in
   let vl = List.map fst v_paraml in
   List.fold_right bind_opt v_paraml
