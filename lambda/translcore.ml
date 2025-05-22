@@ -1372,19 +1372,7 @@ and do_init_switch exp env =
         let tag_arg2 = Ident.create_local "tag_arg2" in
         let tag_id = Ident.create_local "tag_id" in
         let tag_table = Ident.create_local "tag_table" in
-(*
-        let is_object_tag =
-          Lprim (Pintcomp Ceq, [ Lvar tag_arg; Lconst (const_int Obj.object_tag) ], loc)
-        in
 
-        let get_arg_id =
-          Lifthenelse (
-            is_object_tag,
-            get_field 1 Immediate (Lvar tag_arg) loc,
-            field_alias 0 Pointer tag_arg2 arg loc (get_field 1 Immediate (Lvar tag_arg2) loc)
-          )
-        in
-*)
         let get_arg_id =
           Lswitch (
             Lvar tag_arg,
