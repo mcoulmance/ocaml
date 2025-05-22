@@ -3204,48 +3204,6 @@ let transl_match_on_option arg loc ~if_some ~if_none =
     Lifthenelse(Lprim (Pisint, [ arg ], loc), if_none, if_some)
   else
     Lifthenelse(arg, if_some, if_none)
-(*
-let combine_extension_constructor loc arg pat_env partial ctx def
-    (descr_lambda_list, total1, _pats) =
-  let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
-  let fail, local_jumps = mk_failaction_neg partial ctx def in
-  let lambda1 =
-    let consts, nonconsts =
-      split_extension_cases (List.map tag_lambda descr_lambda_list) in
-    let default, consts, nonconsts =
-      match fail with
-      | None -> (
-          match (consts, nonconsts) with
-          | _, (_, act) :: rem -> (act, consts, rem)
-          | (_, act) :: rem, _ -> (act, rem, nonconsts)
-          | _ -> assert false
-        )
-      | Some fail -> (fail, consts, nonconsts)
-    in
-    let nonconst_lambda =
-      match nonconsts with
-      | [] -> default
-      | _ ->
-          let tag = Ident.create_local "tag" in
-          let tests =
-            List.fold_right
-              (fun (path, act) rem ->
-                let ext = transl_extension_path loc pat_env path in
-                Lifthenelse
-                  (Lprim (Pintcomp Ceq, [ Lvar tag; ext ], loc), act, rem))
-              nonconsts default
-          in
-          Llet (Alias, Pgenval, tag,
-                Lprim (Pfield (0, Pointer, Immutable), [ arg ], loc), tests)
-    in
-    List.fold_right
-      (fun (path, act) rem ->
-        let ext = transl_extension_path loc pat_env path in
-        Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
-      consts nonconst_lambda
-  in
-  (lambda1, Jumps.union local_jumps total1)
-*)
 
 let combine_extension_constructor loc arg pat_env partial ctx def
     (descr_lambda_list, total1, _pats) =
