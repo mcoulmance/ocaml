@@ -14,7 +14,7 @@
 (**************************************************************************)
 
 (* Translation from typed abstract syntax to lambda terms,
-   for the core language *)
+ for the core language *)
 
 open Misc
 open Asttypes
@@ -27,8 +27,8 @@ open Lambda
 open Debuginfo.Scoped_location
 
 type error =
-    Free_super_var
-  | Unreachable_reached
+  Free_super_var
+| Unreachable_reached
 
 exception Error of Location.t * error
 
@@ -36,150 +36,150 @@ let use_dup_for_constant_mutable_arrays_bigger_than = 4
 
 (* Forward declaration -- to be filled in by Translmod.transl_module *)
 let transl_module =
-  ref((fun ~scopes:_ _cc _rootpath _modl -> assert false) :
-      scopes:scopes -> module_coercion -> Path.t option ->
-      module_expr -> lambda)
+ref((fun ~scopes:_ _cc _rootpath _modl -> assert false) :
+    scopes:scopes -> module_coercion -> Path.t option ->
+    module_expr -> lambda)
 
 let transl_object =
-  ref (fun ~scopes:_ _id _s _cl -> assert false :
-       scopes:scopes -> Ident.t -> string list -> class_expr -> lambda)
+ref (fun ~scopes:_ _id _s _cl -> assert false :
+     scopes:scopes -> Ident.t -> string list -> class_expr -> lambda)
 
 (* Compile an exception/extension definition *)
 
 let prim_fresh_oo_id =
-  Pccall (Primitive.simple ~name:"caml_fresh_oo_id" ~arity:1 ~alloc:false)
+Pccall (Primitive.simple ~name:"caml_fresh_oo_id" ~arity:1 ~alloc:false)
 
 let transl_extension_constructor ~scopes env path ext =
-  let path =
-    Printtyp.wrap_printing_env env ~error:true (fun () ->
-      Option.map (Out_type.rewrite_double_underscore_paths env) path)
-  in
-  let name =
-    match path, !Clflags.for_package with
-      None, _ -> Ident.name ext.ext_id
-    | Some p, None -> Path.name p
-    | Some p, Some pack -> Printf.sprintf "%s.%s" pack (Path.name p)
-  in
-  let loc = of_location ~scopes ext.ext_loc in
-  match ext.ext_kind with
-    Text_decl _ ->
-      Lprim (Pmakeblock (Obj.object_tag, Immutable, None),
-        [Lconst (Const_base (Const_string (name, ext.ext_loc, None)));
-         Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc)],
-        loc)
-  | Text_rebind(path, _lid) ->
-      transl_extension_path loc env path
+let path =
+  Printtyp.wrap_printing_env env ~error:true (fun () ->
+    Option.map (Out_type.rewrite_double_underscore_paths env) path)
+in
+let name =
+  match path, !Clflags.for_package with
+    None, _ -> Ident.name ext.ext_id
+  | Some p, None -> Path.name p
+  | Some p, Some pack -> Printf.sprintf "%s.%s" pack (Path.name p)
+in
+let loc = of_location ~scopes ext.ext_loc in
+match ext.ext_kind with
+  Text_decl _ ->
+    Lprim (Pmakeblock (Obj.object_tag, Immutable, None),
+      [Lconst (Const_base (Const_string (name, ext.ext_loc, None)));
+       Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc)],
+      loc)
+| Text_rebind(path, _lid) ->
+    transl_extension_path loc env path
 
 (* To propagate structured constants *)
 
 exception Not_constant
 
 let extract_constant = function
-    Lconst sc -> sc
-  | _ -> raise Not_constant
+  Lconst sc -> sc
+| _ -> raise Not_constant
 
 let extract_float = function
-    Const_base(Const_float f) -> f
-  | _ -> fatal_error "Translcore.extract_float"
+  Const_base(Const_float f) -> f
+| _ -> fatal_error "Translcore.extract_float"
 
 (* Insertion of debugging events *)
 
 let event_before ~scopes exp lam =
-  Translprim.event_before (of_location ~scopes exp.exp_loc) exp lam
+Translprim.event_before (of_location ~scopes exp.exp_loc) exp lam
 
 let event_after ~scopes exp lam =
-  Translprim.event_after (of_location ~scopes exp.exp_loc) exp lam
+Translprim.event_after (of_location ~scopes exp.exp_loc) exp lam
 
 let event_function ~scopes exp lam =
-  if !Clflags.debug && not !Clflags.native_code then
-    let repr = Some (ref 0) in
-    let (info, body) = lam repr in
-    (info,
-     Levent(body, {lev_loc = of_location ~scopes exp.exp_loc;
-                   lev_kind = Lev_function;
-                   lev_repr = repr;
-                   lev_env = exp.exp_env}))
-  else
-    lam None
+if !Clflags.debug && not !Clflags.native_code then
+  let repr = Some (ref 0) in
+  let (info, body) = lam repr in
+  (info,
+   Levent(body, {lev_loc = of_location ~scopes exp.exp_loc;
+                 lev_kind = Lev_function;
+                 lev_repr = repr;
+                 lev_env = exp.exp_env}))
+else
+  lam None
 
 (* Assertions *)
 
 let assert_failed loc ~scopes exp =
-  let slot =
-    transl_extension_path Loc_unknown
-      Env.initial Predef.path_assert_failure
-  in
-  let (fname, line, char) =
-    Location.get_pos_info loc.Location.loc_start
-  in
-  let loc = of_location ~scopes exp.exp_loc in
-  Lprim(Praise Raise_regular, [event_after ~scopes exp
-    (Lprim(Pmakeblock(0, Immutable, None),
-          [slot;
-           Lconst(Const_block(0,
-              [Const_base(Const_string (fname, exp.exp_loc, None));
-               Const_base(Const_int line);
-               Const_base(Const_int char)]))], loc))], loc)
+let slot =
+  transl_extension_path Loc_unknown
+    Env.initial Predef.path_assert_failure
+in
+let (fname, line, char) =
+  Location.get_pos_info loc.Location.loc_start
+in
+let loc = of_location ~scopes exp.exp_loc in
+Lprim(Praise Raise_regular, [event_after ~scopes exp
+  (Lprim(Pmakeblock(0, Immutable, None),
+        [slot;
+         Lconst(Const_block(0,
+            [Const_base(Const_string (fname, exp.exp_loc, None));
+             Const_base(Const_int line);
+             Const_base(Const_int char)]))], loc))], loc)
 
 (* In cases where we're careful to preserve syntactic arity, we disable
-   the arity fusion attempted by simplif.ml *)
+ the arity fusion attempted by simplif.ml *)
 let function_attribute_disallowing_arity_fusion =
-  { default_function_attribute with may_fuse_arity = false }
+{ default_function_attribute with may_fuse_arity = false }
 
 let rec cut n l =
-  if n = 0 then ([],l) else
-  match l with [] -> failwith "Translcore.cut"
-  | a::l -> let (l1,l2) = cut (n-1) l in (a::l1,l2)
+if n = 0 then ([],l) else
+match l with [] -> failwith "Translcore.cut"
+| a::l -> let (l1,l2) = cut (n-1) l in (a::l1,l2)
 
 (* [fuse_method_arity] is what ensures that a n-ary method is compiled as a
-   (n+1)-ary function, where the first parameter is self. It fuses together the
-   self and method parameters.
+ (n+1)-ary function, where the first parameter is self. It fuses together the
+ self and method parameters.
 
-   Input:  fun self -> fun method_param_1 ... method_param_n -> body
-   Output: fun self method_param_1 ... method_param_n -> body
+ Input:  fun self -> fun method_param_1 ... method_param_n -> body
+ Output: fun self method_param_1 ... method_param_n -> body
 
-   It detects whether the AST is a method by the presence of [Texp_poly] on the
-   inner function. This is only ever added to methods.
+ It detects whether the AST is a method by the presence of [Texp_poly] on the
+ inner function. This is only ever added to methods.
 *)
 let fuse_method_arity parent_params parent_body =
-  match parent_body with
-  | Tfunction_body
-      { exp_desc = Texp_function (method_params, method_body);
-        exp_extra;
-      }
-      when
-        List.exists
-          (function (Texp_poly _, _, _) -> true | _ -> false)
-          exp_extra
-    -> parent_params @ method_params, method_body
-  | _ -> parent_params, parent_body
+match parent_body with
+| Tfunction_body
+    { exp_desc = Texp_function (method_params, method_body);
+      exp_extra;
+    }
+    when
+      List.exists
+        (function (Texp_poly _, _, _) -> true | _ -> false)
+        exp_extra
+  -> parent_params @ method_params, method_body
+| _ -> parent_params, parent_body
 
 (* Translation of expressions *)
 
 let rec iter_exn_names f pat =
-  match pat.pat_desc with
-  | Tpat_var (id, _, _) -> f id
-  | Tpat_alias (p, id, _, _, _) ->
-      f id;
-      iter_exn_names f p
-  | _ -> ()
+match pat.pat_desc with
+| Tpat_var (id, _, _) -> f id
+| Tpat_alias (p, id, _, _, _) ->
+    f id;
+    iter_exn_names f p
+| _ -> ()
 
 let transl_ident loc env ty path desc =
-  match desc.val_kind with
-  | Val_prim p ->
-      Translprim.transl_primitive loc p env ty (Some path)
-  | Val_anc _ ->
-      raise(Error(to_location loc, Free_super_var))
-  | Val_reg | Val_self _ ->
-      transl_value_path loc env path
-  |  _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
+match desc.val_kind with
+| Val_prim p ->
+    Translprim.transl_primitive loc p env ty (Some path)
+| Val_anc _ ->
+    raise(Error(to_location loc, Free_super_var))
+| Val_reg | Val_self _ ->
+    transl_value_path loc env path
+|  _ -> fatal_error "Translcore.transl_exp: bad Texp_ident"
 
 let is_omitted = function
-  | Arg _ -> false
-  | Omitted () -> true
+| Arg _ -> false
+| Omitted () -> true
 
 let rec transl_exp ~scopes e =
-  transl_exp1 ~scopes ~in_new_scope:false e
+transl_exp1 ~scopes ~in_new_scope:false e |> init_switch
 
 (* ~in_new_scope tracks whether we just opened a new scope.
 
@@ -219,7 +219,7 @@ and transl_exp0 ~in_new_scope ~scopes e =
     when List.length oargs >= p.prim_arity
     && List.for_all (fun (_, arg) -> not (is_omitted arg)) oargs ->
       let argl, extra_args = cut p.prim_arity oargs in
-      let arg_exps =
+     let arg_exps =
          List.map (function _, Arg x -> x | _, Omitted () -> assert false) argl
       in
       let args = transl_list ~scopes arg_exps in
@@ -287,7 +287,7 @@ and transl_exp0 ~in_new_scope ~scopes e =
               (of_location ~scopes e.exp_loc))
       end
   | Texp_construct(_, cstr, args) ->
-      let ll, shape = transl_list_with_shape ~scopes args in
+    let ll, shape = transl_list_with_shape ~scopes args in
       if cstr.cstr_inlined <> None then begin match ll with
         | [x] -> x
         | _ -> assert false
@@ -922,7 +922,7 @@ and transl_function ~scopes e params body =
 
 (* Like transl_exp, but used when a new scope was just introduced. *)
 and transl_scoped_exp ~scopes expr =
-  transl_exp1 ~scopes ~in_new_scope:true expr
+  transl_exp1 ~scopes ~in_new_scope:true expr |> init_switch
 
 (* Decides whether a pattern binding should introduce a new scope. *)
 and transl_bound_exp ~scopes ~in_structure pat expr =
@@ -1298,6 +1298,237 @@ and transl_letop ~scopes loc env let_ ands param case partial =
     ap_inlined = Default_inline;
     ap_specialised = Default_specialise;
   }
+
+and init_switch prog (* ??? *) =
+  let make_call (id, env) rem =
+    Llet (Strict, Pgenval, id,
+      Lapply {
+        ap_func = transl_prim "CamlinternalExtension" "init_match";
+        ap_args = [ env ];
+        ap_loc = Debuginfo.Scoped_location.Loc_unknown;
+        ap_tailcall = Default_tailcall;
+        ap_inlined = Never_inline;
+        ap_specialised = Default_specialise;
+      },
+      rem)
+
+  in
+
+  let (code, env) = do_init_switch prog [] in
+  List.fold_right make_call env code
+
+and do_init_switch exp env =
+  match exp with
+    | Lvar _ | Lmutvar _ | Lconst _ -> (exp, env)
+
+    | Lapply ({ ap_func; ap_args; _ } as app) ->
+        let (ap_func, env) = do_init_switch ap_func env in
+        let (ap_args, env) = do_init_switch_list ap_args env in
+        Lapply { app with ap_func; ap_args }, env
+
+    | Lfunction lfunction ->
+        let (lfunction, env) = do_init_switch_fun lfunction env in
+        Lfunction lfunction, env
+
+    | Llet (lkind, vkind, id, l1, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let l2 = init_switch l2 in
+        Llet (lkind, vkind, id, l1, l2), env
+
+    | Lmutlet (lkind, id, l1, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let l2 = init_switch l2 in
+        Lmutlet (lkind, id, l1, l2), env
+
+    | Lletrec (bdl, l) ->
+        let (env, bdl) = List.fold_left_map
+          (fun env { id; def } ->
+            let (def, env) = do_init_switch_fun def env in
+            env, { id; def })
+          env bdl
+        in
+        let l = init_switch l in
+        Lletrec (bdl, l), env
+
+    | Lprim (prim, ll, loc) ->
+        let (env, ll) = List.fold_left_map
+          (fun env e ->
+            let (e, env) = do_init_switch e env in
+            env, e)
+          env ll
+        in
+        Lprim (prim, ll, loc), env
+
+    | Lswitch (arg, ({ sw_init = Some ev; _ } as sw), loc) ->
+        let get_field offset immediate arg loc =
+          Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc)
+        in
+        let alias kind tag expr rest = Llet (kind, Pgenval, tag, expr, rest) in
+        let field_alias offset immediate tag arg loc rest =
+          alias Alias tag (get_field offset immediate arg loc) rest
+        in
+
+        let tag_arg = Ident.create_local "tag_arg" in
+        let tag_arg2 = Ident.create_local "tag_arg2" in
+        let tag_id = Ident.create_local "tag_id" in
+        let tag_table = Ident.create_local "tag_table" in
+(*
+        let is_object_tag =
+          Lprim (Pintcomp Ceq, [ Lvar tag_arg; Lconst (const_int Obj.object_tag) ], loc)
+        in
+
+        let get_arg_id =
+          Lifthenelse (
+            is_object_tag,
+            get_field 1 Immediate (Lvar tag_arg) loc,
+            field_alias 0 Pointer tag_arg2 arg loc (get_field 1 Immediate (Lvar tag_arg2) loc)
+          )
+        in
+*)
+        let get_arg_id =
+          Lswitch (
+            Lvar tag_arg,
+            {
+              sw_numconsts = 0;
+              sw_consts = [];
+              sw_numblocks = 256;
+              sw_blocks = [
+                (0, field_alias 0 Pointer tag_arg2 (Lvar tag_arg) loc (get_field 1 Immediate (Lvar tag_arg2) loc));
+                (Obj.object_tag, get_field 1 Immediate (Lvar tag_arg) loc)
+              ];
+              sw_init = None;
+              sw_failaction = Some (Lconst (const_int (-1)));
+            },
+            loc)
+        in
+
+        let switch =
+          alias Strict tag_arg arg (
+            alias Alias tag_id get_arg_id (
+              Lswitch (
+                Lapply {
+                  ap_func = Lvar tag_table;
+                  ap_args = [ Lvar tag_id ];
+                  ap_loc = Debuginfo.Scoped_location.Loc_unknown;
+                  ap_tailcall = Default_tailcall;
+                  ap_inlined = Default_inline;
+                  ap_specialised = Default_specialise;
+                },
+                { sw with sw_init = None },
+                loc)
+            )
+          )
+        in
+        switch, ((tag_table, ev) :: env)
+
+    | Lswitch (arg, ({ sw_consts; sw_blocks; _ } as sw), loc) ->
+        let (arg, env) = do_init_switch arg env in
+        let (sw_consts, env) = do_init_switch_list2 sw_consts env in
+        let (sw_blocks, env) = do_init_switch_list2 sw_blocks env in
+        Lswitch (arg, { sw with sw_consts; sw_blocks }, loc), env
+
+    | Lstringswitch (l1, ll, l2, loc) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (ll, env) = do_init_switch_list3 ll env in
+        let (l2, env) = match l2 with
+          | Some l ->
+              let (l2, env) = do_init_switch l env in
+              Some l2, env
+          | None ->
+              None, env
+        in
+
+        Lstringswitch (l1, ll,l2, loc), env
+
+    | Lstaticraise (i, l) ->
+        let (l, env) = do_init_switch_list l env in
+        Lstaticraise (i, l), env
+
+    | Lstaticcatch (l1, i, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        Lstaticcatch (l1, i, l2), env
+
+    | Ltrywith (l1, id, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        Ltrywith (l1, id, l2), env
+
+    | Lifthenelse (l1, l2, l3) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        let (l3, env) = do_init_switch l3 env in
+        Lifthenelse (l1, l2, l3), env
+
+    | Lsequence (l1, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        Lsequence (l1, l2), env
+
+    | Lwhile (l1, l2) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        Lwhile (l1, l2), env
+
+    | Lfor (id, l1, l2, df, l3) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        let (l3, env) = do_init_switch l3 env in
+        Lfor (id, l1, l2, df, l3), env
+
+    | Lassign (id, l) ->
+        let (l, env) = do_init_switch l env in
+        Lassign (id, l), env
+
+    | Lsend (kind, l1, l2, ll, loc) ->
+        let (l1, env) = do_init_switch l1 env in
+        let (l2, env) = do_init_switch l2 env in
+        let (ll, env) = do_init_switch_list ll env in
+        Lsend (kind, l1, l2, ll, loc), env
+
+    | Levent (l, evt) ->
+        let (l, env) = do_init_switch l env in
+        Levent (l, evt), env
+
+    | Lifused (id, l) ->
+        let (l, env) = do_init_switch l env in
+        Lifused (id, l), env
+
+and do_init_switch_list list env =
+  let env, list = List.fold_left_map
+    (fun env exp ->
+      let exp, env = do_init_switch exp env in
+      env, exp)
+    env list
+  in
+  list, env
+
+and do_init_switch_list2 list env =
+  let env, list = List.fold_left_map
+    (fun env (lhs, exp) ->
+      let exp, env = do_init_switch exp env in
+      env, (lhs, exp))
+    env list
+  in
+  list, env
+
+and do_init_switch_list3 list env =
+  let env, list = List.fold_left_map
+    (fun env (lhs, exp) ->
+      let exp, env = do_init_switch exp env in
+      env, (lhs, exp))
+    env list
+  in
+  list, env
+
+and do_init_switch_fun { kind; params; return; body; attr; loc } env =
+  let body = init_switch body in
+  let lfunction =
+    match lfunction ~kind ~params ~return ~body ~attr ~loc with
+      | Lfunction lfunction -> lfunction
+      | _ -> assert false
+  in
+  lfunction, env
 
 (* Wrapper for class compilation *)
 

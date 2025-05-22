@@ -1400,15 +1400,16 @@ let can_group discr pat =
   | Constant (Const_int64 _), Constant (Const_int64 _)
   | Constant (Const_nativeint _), Constant (Const_nativeint _) ->
       true
-  | Construct { cstr_tag = Cstr_extension (p1, _) },
-    Construct { cstr_tag = Cstr_extension (p2, _) }
+  | Construct { cstr_tag = Cstr_extension (_p1, _) },
+    Construct { cstr_tag = Cstr_extension (_p2, _) }
     ->
       (* Extension constructors with distinct names may be equal thanks to
          constructor rebinding. So we need to produce a specialized
          submatrix for each syntactically-distinct constructor (with a threading
          of exits such that each submatrix falls back to the
          potentially-compatible submatrices below it).  *)
-      Path.same p1 p2
+      (* Path.same p1 p2 *)
+      true
   | Construct _, Construct _
   | Tuple _, (Tuple _ | Any)
   | Record _, (Record _ | Any)
@@ -2220,7 +2221,8 @@ let inline_lazy_force_switch arg loc =
           varg,
           Lswitch
             ( Lprim (Pccall prim_obj_tag, [ varg ], loc),
-              { sw_numblocks = 0;
+              { sw_init = None;
+                sw_numblocks = 0;
                 sw_blocks = [];
                 sw_numconsts = 256;
                 (* PR#6033 - tag ranges from 0 to 255 *)
@@ -2691,7 +2693,8 @@ module SArg = struct
     done;
     !wrapper (Lswitch
       ( arg,
-        { sw_numconsts = Array.length cases;
+        { sw_init = None;
+          sw_numconsts = Array.length cases;
           sw_consts = !l;
           sw_numblocks = 0;
           sw_blocks = [];
@@ -3169,7 +3172,7 @@ let split_cases tag_lambda_list =
   in
   let const, nonconst = split_rec tag_lambda_list in
   (sort_int_lambda_list const, sort_int_lambda_list nonconst)
-
+(*
 let split_extension_cases tag_lambda_list =
   let rec split_rec = function
     | [] -> ([], [])
@@ -3182,6 +3185,16 @@ let split_extension_cases tag_lambda_list =
       )
   in
   split_rec tag_lambda_list
+*)
+let extract_extension_cases tag_lambda_list =
+  let rec split_rec = function
+    | [] -> []
+    | (cstr_tag, act) :: rem ->
+        match cstr_tag with
+        | Cstr_extension (path, _) -> (path, act) :: (split_rec rem)
+        | _ -> assert false
+  in
+  split_rec tag_lambda_list
 
 let transl_match_on_option arg loc ~if_some ~if_none =
   (* Keeping the Pisint test would make the bytecode
@@ -3191,7 +3204,7 @@ let transl_match_on_option arg loc ~if_some ~if_none =
     Lifthenelse(Lprim (Pisint, [ arg ], loc), if_none, if_some)
   else
     Lifthenelse(arg, if_some, if_none)
-
+(*
 let combine_extension_constructor loc arg pat_env partial ctx def
     (descr_lambda_list, total1, _pats) =
   let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
@@ -3230,6 +3243,47 @@ let combine_extension_constructor loc arg pat_env partial ctx def
         let ext = transl_extension_path loc pat_env path in
         Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
       consts nonconst_lambda
+  in
+  (lambda1, Jumps.union local_jumps total1)
+*)
+
+let combine_extension_constructor loc arg pat_env partial ctx def
+    (descr_lambda_list, total1, _pats) =
+  let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
+  let fail, local_jumps = mk_failaction_neg partial ctx def in
+  let pats = extract_extension_cases (List.map tag_lambda descr_lambda_list) in
+  let block elt = Lprim (Pmakeblock (0, Immutable, None), elt, loc) in
+  let tuple a b = block [ a; Lconst (const_int b) ] in
+  let cons ext id tail = block [ tuple ext id; tail ] in
+
+  let default, pats =
+    match fail, pats with
+      | Some fail, _ ->
+          fail, pats
+      | None, (_, act) :: rem ->
+          act, rem
+      | _ -> assert false
+  in
+
+
+  let (env, lambda, length) =
+  List.fold_right
+    (fun (path, act) (env, pat, id) ->
+      let ext = transl_extension_path loc pat_env path in
+      cons ext id env, (id, act) :: pat, id + 1)
+    pats
+    (Lconst (const_int 0), [], 1)
+  in
+  let lambda1 =
+    Lswitch
+      ( arg,
+        { sw_init = Some env;
+          sw_numconsts = length + 1;
+          sw_consts = lambda;
+          sw_numblocks = 0;
+          sw_blocks = [];
+          sw_failaction = Some default },
+        loc)
   in
   (lambda1, Jumps.union local_jumps total1)
 
@@ -3329,7 +3383,8 @@ let combine_regular_constructor loc arg cstr partial ctx def
             | None ->
                 (* In the general case, emit a switch. *)
                 let sw =
-                  { sw_numconsts = cstr.cstr_consts;
+                  { sw_init = None;
+                    sw_numconsts = cstr.cstr_consts;
                     sw_consts = consts;
                     sw_numblocks = cstr.cstr_nonconsts;
                     sw_blocks = nonconsts;

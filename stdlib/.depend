@@ -178,6 +178,10 @@ camlinternalOO.cmx : \
     camlinternalOO.cmi
 camlinternalOO.cmi : \
     stdlib__Obj.cmi
+camlinternalExtension.cmo : \
+  camlinternalExtension.cmi
+camlinternalExtension.cmx : \
+  camlinternalExtension.cmi
 stdlib__Char.cmo : char.ml \
     stdlib__Char.cmi
 stdlib__Char.cmx : char.ml \

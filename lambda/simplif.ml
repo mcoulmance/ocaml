@@ -58,7 +58,8 @@ let rec eliminate_ref id = function
       Lprim(p, List.map (eliminate_ref id) el, loc)
   | Lswitch(e, sw, loc) ->
       Lswitch(eliminate_ref id e,
-        {sw_numconsts = sw.sw_numconsts;
+        {sw_init = None;
+         sw_numconsts = sw.sw_numconsts;
          sw_consts =
             List.map (fun (n, e) -> (n, eliminate_ref id e)) sw.sw_consts;
          sw_numblocks = sw.sw_numblocks;

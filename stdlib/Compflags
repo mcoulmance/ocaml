@@ -19,6 +19,7 @@ case $1 in
       echo ' -nopervasives -no-alias-deps -w -49' \
            ' -pp "$AWK -f ./expand_module_aliases.awk"';;
   # stdlib dependencies
+  camlinternalExtension*.cm[iox]) echo ' -nopervasives';;
   camlinternalFormatBasics*.cm[iox]) echo ' -nopervasives';;
   # end stdlib dependencies
   camlinternalOO.cmx) echo ' -inline 0 -afl-inst-ratio 0';;

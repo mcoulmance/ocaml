@@ -345,7 +345,8 @@ and lambda_apply =
     ap_specialised : specialise_attribute; }
 
 and lambda_switch =
-  { sw_numconsts: int;
+  { sw_init : lambda option;
+    sw_numconsts: int;
     sw_consts: (int * lambda) list;
     sw_numblocks: int;
     sw_blocks: (int * lambda) list;
@@ -944,7 +945,8 @@ let shallow_map f = function
       Lprim (p, List.map f el, loc)
   | Lswitch (e, sw, loc) ->
       Lswitch (f e,
-               { sw_numconsts = sw.sw_numconsts;
+               { sw_init = None;
+                 sw_numconsts = sw.sw_numconsts;
                  sw_consts = List.map (fun (n, e) -> (n, f e)) sw.sw_consts;
                  sw_numblocks = sw.sw_numblocks;
                  sw_blocks = List.map (fun (n, e) -> (n, f e)) sw.sw_blocks;
