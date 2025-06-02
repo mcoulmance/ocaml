@@ -8,6 +8,8 @@ type table =
   | Node of int * int * table * table
   | Leaf
 
+let no_match_found = 0
+
 let rec table_insert ((id, value) as va) table =
   match table with
     | Leaf ->
@@ -25,7 +27,7 @@ let rec table_insert ((id, value) as va) table =
 let rec table_find id table =
   match table with
     | Leaf ->
-        0
+        no_match_found
 
     | Node (nid, nvalue, left, right) ->
         if nid = id then
