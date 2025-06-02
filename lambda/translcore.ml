@@ -179,7 +179,7 @@ let is_omitted = function
 | Omitted () -> true
 
 let rec transl_exp ~scopes e =
-transl_exp1 ~scopes ~in_new_scope:false e |> init_switch
+transl_exp1 ~scopes ~in_new_scope:false e |> initialize_ext_switch
 
 (* ~in_new_scope tracks whether we just opened a new scope.
 
@@ -922,7 +922,7 @@ and transl_function ~scopes e params body =
 
 (* Like transl_exp, but used when a new scope was just introduced. *)
 and transl_scoped_exp ~scopes expr =
-  transl_exp1 ~scopes ~in_new_scope:true expr |> init_switch
+  transl_exp1 ~scopes ~in_new_scope:true expr |> initialize_ext_switch
 
 (* Decides whether a pattern binding should introduce a new scope. *)
 and transl_bound_exp ~scopes ~in_structure pat expr =
@@ -1299,6 +1299,188 @@ and transl_letop ~scopes loc env let_ ands param case partial =
     ap_specialised = Default_specialise;
   }
 
+and initialize_ext_switch lam =
+  let flmap = List.fold_left_map in
+
+  let flmap2 f =
+    flmap (fun env (id, l) ->
+      let (env, l) = f env l in
+      (env, (id, l)))
+  in
+
+  let get_field offset immediate arg loc =
+    Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc)
+  in
+  let alias kind tag expr rest = Llet (kind, Pgenval, tag, expr, rest) in
+  let field_alias offset immediate tag arg loc rest =
+    alias Alias tag (get_field offset immediate arg loc) rest
+  in
+  let make_table table env loc =
+    let block elt loc = Lprim (Pmakeblock (0, Immutable, None), elt, loc) in
+    let tuple a b loc = block [ a; Lconst (const_int b) ] loc in
+
+    List.fold_right
+      (fun (path, id) rem ->
+        let ext = transl_extension_path loc env path in
+        block [ tuple ext id loc; rem ] loc)
+      table (Lconst (const_int 0))
+  in
+  let make_call (id, sw, loc) rem =
+    alias Strict id
+      (Lapply {
+        ap_func = transl_prim "CamlinternalExtension" "init_match";
+        ap_args = [ make_table sw.esw_table sw.esw_env loc ];
+        ap_loc = loc;
+        ap_tailcall = Default_tailcall;
+        ap_inlined = Never_inline;
+        ap_specialised = Default_specialise;
+      })
+      rem
+  in
+
+  let rec init lam =
+    let (env, lam') = init_lam [] lam in
+    List.fold_right make_call env lam'
+
+  and init_lam env lam =
+    match lam with
+      | Lvar _ | Lmutvar _ | Lconst _ -> (env, lam)
+      | Lapply ({ ap_func; ap_args; _ } as app) ->
+          let (env, ap_func) = init_lam env ap_func in
+          let (env, ap_args) = flmap init_lam env ap_args in
+          (env, Lapply { app with ap_func; ap_args })
+      | Lfunction lfun ->
+          (env, Lfunction (init_fun lfun))
+      | Llet (lkind, vkind, id, l1, l2) ->
+          let (env, l1) = init_lam env l1 in
+          (env, Llet (lkind, vkind, id, l1, init l2))
+      | Lmutlet (lkind, id, l1, l2) ->
+          let (env, l1) = init_lam env l1 in
+          (env, Lmutlet (lkind, id, l1, init l2))
+      | Lletrec (bdl, l) ->
+          let bdl =
+            List.map (fun { id; def } ->
+              let def = init_fun def in { id; def })
+            bdl
+          in
+          (env, Lletrec (bdl, init l))
+      | Lprim (prim, ll, loc) ->
+          let (env, ll) = flmap init_lam env ll in
+          (env, Lprim (prim, ll, loc))
+      | Lswitch (arg, sw, loc) ->
+          let (env, arg) = init_lam env arg in
+          let (env, sw_consts) = flmap2 init_lam env sw.sw_consts in
+          let (env, sw_blocks) = flmap2 init_lam env sw.sw_blocks in
+          (env, Lswitch (arg, { sw with sw_consts; sw_blocks }, loc))
+      | Lextswitch (arg, sw, loc) ->
+          let (env, arg) = init_lam env arg in
+          let (env, sw_consts) = flmap2 init_lam env sw.esw_case in
+
+          let tag_arg = Ident.create_local "tag_arg" in
+          let tag_arg2 = Ident.create_local "tag_arg2" in
+          let tag_id = Ident.create_local "tag_id" in
+          let tag_table = Ident.create_local "tag_table" in
+
+          let get_arg_id =
+            Lswitch (
+              Lvar tag_arg,
+              {
+                sw_numconsts = 0;
+                sw_consts = [];
+                sw_numblocks = 256;
+                sw_blocks = [
+                  (0, field_alias 0 Pointer tag_arg2 (Lvar tag_arg) loc (get_field 1 Immediate (Lvar tag_arg2) loc));
+                  (Obj.object_tag, get_field 1 Immediate (Lvar tag_arg) loc)
+                ];
+                sw_init = None;
+                sw_failaction = None;
+              },
+              loc)
+          in
+          let switch =
+            alias Strict tag_arg arg (
+              alias Alias tag_id get_arg_id (
+                Lswitch (
+                  Lapply {
+                    ap_func = Lvar tag_table;
+                    ap_args = [ Lvar tag_id ];
+                    ap_loc = loc;
+                    ap_tailcall = Default_tailcall;
+                    ap_inlined = Never_inline;
+                    ap_specialised = Default_specialise;
+                  },
+                  { sw_numconsts = sw.esw_numcase;
+                    sw_consts;
+                    sw_numblocks = 0;
+                    sw_blocks = [];
+                    sw_init = None;
+                    sw_failaction = Some sw.esw_default },
+                  loc)
+              )
+            )
+          in
+
+          (((tag_table, sw, loc) :: env), switch)
+      | Lstringswitch (l1, ll, l2, loc) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, ll) = flmap2 init_lam env ll in
+          (match l2 with
+            | Some l ->
+                let (env, l2) = init_lam env l in
+                (env, Lstringswitch (l1, ll, Some l2, loc))
+            | None ->
+                (env, Lstringswitch (l1, ll, None, loc)))
+      | Lstaticraise (i, l) ->
+          let (env, l) = flmap init_lam env l in
+          (env, Lstaticraise (i, l))
+      | Lstaticcatch (l1, i, l2) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          (env, Lstaticcatch (l1, i, l2))
+      | Ltrywith (l1, id, l2) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          (env, Ltrywith (l1, id, l2))
+      | Lifthenelse (l1, l2, l3) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          let (env, l3) = init_lam env l3 in
+          (env, Lifthenelse (l1, l2, l3))
+      | Lsequence (l1, l2) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          (env, Lsequence (l1, l2))
+      | Lwhile (l1, l2) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          (env, Lwhile (l1, l2))
+      | Lfor (id, l1, l2, df, l3) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          let (env, l3) = init_lam env l3 in
+          (env, Lfor (id, l1, l2, df, l3))
+      | Lassign (id, l) ->
+          let (env, l) = init_lam env l in
+          (env, Lassign (id, l))
+      | Lsend (kind, l1, l2, ll, loc) ->
+          let (env, l1) = init_lam env l1 in
+          let (env, l2) = init_lam env l2 in
+          let (env, ll) = flmap init_lam env ll in
+          (env, Lsend (kind, l1, l2, ll, loc))
+      | Levent (l, evt) ->
+          let (env, l) = init_lam env l in
+          (env, Levent (l, evt))
+      | Lifused (id, l) ->
+          let (env, l) = init_lam env l in
+          (env, Lifused(id, l))
+
+  and init_fun { kind; params; return; body; attr; loc } =
+    let body = init body in
+    lfunction' ~kind ~params ~return ~body ~attr ~loc
+  in
+  init lam
+
+(*
 and init_switch prog (* ??? *) =
   let make_call (id, env) rem =
     Llet (Strict, Pgenval, id,
@@ -1319,6 +1501,7 @@ and init_switch prog (* ??? *) =
 
 and do_init_switch exp env =
   match exp with
+    | Lextswitch _ -> failwith "TODO: Translcore.do_init_switch - Lextswitch"
     | Lvar _ | Lmutvar _ | Lconst _ -> (exp, env)
 
     | Lapply ({ ap_func; ap_args; _ } as app) ->
@@ -1517,7 +1700,7 @@ and do_init_switch_fun { kind; params; return; body; attr; loc } env =
       | _ -> assert false
   in
   lfunction, env
-
+*)
 (* Wrapper for class compilation *)
 
 (*

@@ -593,6 +593,29 @@ let rec lam ppf = function
        "@[<1>(%s %a@ @[<v 0>%a@])@]"
        (match sw.sw_failaction with None -> "switch*" | _ -> "switch")
        lam larg switch sw
+  | Lextswitch (larg, sw, _loc) ->
+      let switch ppf sw =
+          let spc = ref false in
+          List.iter
+            (fun (n, l) ->
+              if !spc then fprintf ppf "@ " else spc := true;
+              fprintf ppf "@[<hv 1>case %i:@ %a@]" n lam l)
+          sw.esw_case;
+          if !spc then fprintf ppf "@ " else spc := true;
+          fprintf ppf "@[<hv 1>default:@ %a@]" lam sw.esw_default
+      in
+      let env ppf sw =
+        let spc = ref false in
+        List.iter
+          (fun (path, id) ->
+            if !spc then fprintf ppf "@ " else spc := true;
+            let name = Path.name path in
+            fprintf ppf "@[<hv 1>%s -> %i@]" name id)
+          sw.esw_table
+      in
+      fprintf ppf
+        "@[<1>(switchext %a@ @[<v 0>%a@]@ @[<v 0>%a@])@]"
+        lam larg env sw switch sw
   | Lstringswitch(arg, cases, default, _) ->
       let switch ppf cases =
         let spc = ref false in

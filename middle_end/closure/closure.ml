@@ -1138,7 +1138,9 @@ let rec close ({ backend; fenv; cenv ; mutable_vars } as env) lam =
             Ucatch (i,[],ubody,uhandler),Value_unknown
           else fn fail
       end
-  | Lstringswitch(arg,sw,d,_) ->
+    | Lextswitch _ ->
+        fatal_error "Closure.close: uninitialized extswitch"
+    | Lstringswitch(arg,sw,d,_) ->
       let uarg,_ = close env arg in
       let usw =
         List.map

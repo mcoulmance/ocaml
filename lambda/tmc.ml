@@ -626,6 +626,9 @@ let rec choice ctx t =
         let sw_blocks = List.combine blocks_lhs blocks_rhs in
         let sw = { sw with sw_consts; sw_blocks; sw_failaction; } in
         Lswitch (l1, sw, loc)
+
+    | Lextswitch _ ->
+        Misc.fatal_error "Tmc.choice: uninitialized extswitch"
     | Lstringswitch (l1, cases, fail, loc) ->
         (* decompose *)
         let cases_lhs, cases_rhs = List.split cases in

@@ -981,7 +981,7 @@ let free_methods l =
         fv := Ident.Set.remove v !fv
     | Lassign _
     | Lvar _ | Lmutvar _ | Lconst _ | Lapply _
-    | Lprim _ | Lswitch _ | Lstringswitch _ | Lstaticraise _
+    | Lprim _ | Lswitch _ | Lextswitch _ | Lstringswitch _ | Lstaticraise _
     | Lifthenelse _ | Lsequence _ | Lwhile _
     | Levent _ | Lifused _ -> ()
   in free l; !fv

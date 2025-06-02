@@ -3210,9 +3210,11 @@ let combine_extension_constructor loc arg pat_env partial ctx def
   let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
   let fail, local_jumps = mk_failaction_neg partial ctx def in
   let pats = extract_extension_cases (List.map tag_lambda descr_lambda_list) in
+  (*
   let block elt = Lprim (Pmakeblock (0, Immutable, None), elt, loc) in
   let tuple a b = block [ a; Lconst (const_int b) ] in
   let cons ext id tail = block [ tuple ext id; tail ] in
+*)
 
   let default, pats =
     match fail, pats with
@@ -3224,6 +3226,14 @@ let combine_extension_constructor loc arg pat_env partial ctx def
   in
 
 
+  let (table, lambda, length) =
+    List.fold_right
+      (fun (path, act) (env, pats, id) ->
+        (path, id) :: env, (id, act) :: pats, id + 1)
+      pats
+      ([], [], 1)
+  in
+(*
   let (env, lambda, length) =
   List.fold_right
     (fun (path, act) (env, pat, id) ->
@@ -3231,7 +3241,19 @@ let combine_extension_constructor loc arg pat_env partial ctx def
       cons ext id env, (id, act) :: pat, id + 1)
     pats
     (Lconst (const_int 0), [], 1)
+  in *)
+  let lambda1 =
+    Lextswitch
+      ( arg,
+        { esw_table = table;
+          esw_env = pat_env;
+          esw_numcase = length;
+          esw_case = lambda;
+          esw_default = default
+        },
+        loc)
   in
+(*
   let lambda1 =
     Lswitch
       ( arg,
@@ -3242,7 +3264,7 @@ let combine_extension_constructor loc arg pat_env partial ctx def
           sw_blocks = [];
           sw_failaction = Some default },
         loc)
-  in
+  in *)
   (lambda1, Jumps.union local_jumps total1)
 
 let combine_regular_constructor loc arg cstr partial ctx def
@@ -4167,15 +4189,20 @@ let rec map_return f = function
   | Lstaticcatch (l1, b, l2) ->
       Lstaticcatch (map_return f l1, b, map_return f l2)
   | Lswitch (s, sw, loc) ->
-      let map_cases cases =
-        List.map (fun (i, l) -> (i, map_return f l)) cases
-      in
       Lswitch
         ( s,
           { sw with
-            sw_consts = map_cases sw.sw_consts;
-            sw_blocks = map_cases sw.sw_blocks;
+            sw_consts = map_cases f sw.sw_consts;
+            sw_blocks = map_cases f sw.sw_blocks;
             sw_failaction = Option.map (map_return f) sw.sw_failaction
+          },
+          loc )
+  | Lextswitch (s, sw, loc) ->
+      Lextswitch
+        ( s,
+          { sw with
+            esw_case = map_cases f sw.esw_case;
+            esw_default = map_return f sw.esw_default
           },
           loc )
   | Lstringswitch (s, cases, def, loc) ->
@@ -4188,6 +4215,9 @@ let rec map_return f = function
   | ( Lvar _ | Lmutvar _ | Lconst _ | Lapply _ | Lfunction _ | Lsend _ | Lprim _
     | Lwhile _ | Lfor _ | Lassign _ | Lifused _ ) as l ->
       f l
+
+and map_cases f cases =
+  List.map (fun (i, l) -> (i, map_return f l)) cases
 
 (* The 'opt' reference indicates if the optimization is worthy.
 

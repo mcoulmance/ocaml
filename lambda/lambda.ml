@@ -309,6 +309,7 @@ type lambda =
   | Lletrec of rec_binding list * lambda
   | Lprim of primitive * lambda list * scoped_location
   | Lswitch of lambda * lambda_switch * scoped_location
+  | Lextswitch of lambda * lambda_ext_switch * scoped_location
   | Lstringswitch of
       lambda * (string * lambda) list * lambda option * scoped_location
   | Lstaticraise of int * lambda list
@@ -351,6 +352,13 @@ and lambda_switch =
     sw_numblocks: int;
     sw_blocks: (int * lambda) list;
     sw_failaction : lambda option}
+
+and lambda_ext_switch =
+  { esw_table : (Path.t * int) list;
+    esw_env : Env.t;
+    esw_numcase : int;
+    esw_case : (int * lambda) list;
+    esw_default : lambda }
 
 and lambda_event =
   { lev_loc: scoped_location;
@@ -461,6 +469,9 @@ let make_key e =
         Lprim (p,tr_recs env es, Loc_unknown)
     | Lswitch (e,sw,loc) ->
         Lswitch (tr_rec env e,tr_sw env sw,loc)
+    | Lextswitch _ ->
+        (* Lextswitch (tr_rec env e, tr_esw env sw, loc) *)
+        raise Not_simple
     | Lstringswitch (e,sw,d,_) ->
         Lstringswitch
           (tr_rec env e,
@@ -496,7 +507,12 @@ let make_key e =
       sw_consts = List.map (fun (i,e) -> i,tr_rec env e) sw.sw_consts ;
       sw_blocks = List.map (fun (i,e) -> i,tr_rec env e) sw.sw_blocks ;
       sw_failaction = tr_opt env sw.sw_failaction ; }
-
+(*
+  and tr_esw env sw =
+    { sw with
+      esw_case = List.map (fun (i,e) -> i, tr_rec env e) sw.esw_case ;
+      esw_default = tr_rec env sw.esw_default }
+*)
   and tr_opt env = function
     | None -> None
     | Some e -> Some (tr_rec env e) in
@@ -554,6 +570,10 @@ let shallow_iter ~tail ~non_tail:f = function
       List.iter (fun (_key, case) -> tail case) sw.sw_consts;
       List.iter (fun (_key, case) -> tail case) sw.sw_blocks;
       iter_opt tail sw.sw_failaction
+  | Lextswitch (arg, sw, _) ->
+      f arg;
+      List.iter (fun (_key, case) -> tail case) sw.esw_case;
+      iter_opt tail (Some sw.esw_default)
   | Lstringswitch (arg,cases,default,_) ->
       f arg ;
       List.iter (fun (_,act) -> tail act) cases ;
@@ -622,6 +642,8 @@ let rec free_variables = function
       | None -> set
       | Some failaction -> Ident.Set.union set (free_variables failaction)
       end
+  | Lextswitch _ ->
+      fatal_error "Lambda.free_variables: uninitialized extswitch"
   | Lstringswitch (arg,cases,default,_) ->
       let set =
         free_variables_list (free_variables arg)
@@ -823,6 +845,11 @@ let build_substs update_env ?(freshen_bound_variables = false) s =
                         sw_blocks = List.map (subst_case s l) sw.sw_blocks;
                         sw_failaction = subst_opt s l sw.sw_failaction; },
                 loc)
+    | Lextswitch (arg, sw, loc) ->
+        Lextswitch(subst s l arg,
+                   {sw with esw_case = List.map (subst_case s l) sw.esw_case;
+                            esw_default = subst s l sw.esw_default },
+                   loc)
     | Lstringswitch (arg,cases,default,loc) ->
         Lstringswitch
           (subst s l arg,
@@ -953,6 +980,8 @@ let shallow_map f = function
                  sw_failaction = Option.map f sw.sw_failaction;
                },
                loc)
+  | Lextswitch _ ->
+      fatal_error "Lambda.shallow_map: uninitialized extswitch"
   | Lstringswitch (e, sw, default, loc) ->
       Lstringswitch (
         f e,

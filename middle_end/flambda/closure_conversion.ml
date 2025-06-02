@@ -460,6 +460,9 @@ let rec close t env (lam : Lambda.lambda) : Flambda.t =
           blocks = List.map aux sw.sw_blocks;
           failaction = Option.map (close t env) sw.sw_failaction;
         }))
+  | Lextswitch _ ->
+      Misc.fatal_error "Closure_conversion.close: uninitialized extswitch"
+
   | Lstringswitch (arg, sw, def, _) ->
     let scrutinee = Variable.create Names.string_switch in
     Flambda.create_let scrutinee (Expr (close t env arg))
