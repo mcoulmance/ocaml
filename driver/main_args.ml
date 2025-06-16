@@ -464,6 +464,10 @@ let mk_safer_matching f =
   "-safer-matching", Arg.Unit f,
   " Do not use type information to optimize pattern-matching"
 
+let mk_opt_open f =
+  "-optopen", Arg.Unit f,
+  "Optimize open variants for better performances"
+
 let mk_shared f =
   "-shared", Arg.Unit f, " Produce a dynlinkable plugin"
 
@@ -882,6 +886,7 @@ module type Compiler_options = sig
   val _noautolink : unit -> unit
   val _o : string -> unit
   val _opaque :  unit -> unit
+  val _opt_open : unit -> unit
   val _output_obj : unit -> unit
   val _output_complete_obj : unit -> unit
   val _pack : unit -> unit
@@ -1105,6 +1110,7 @@ struct
     mk_o F._o;
     mk_opaque F._opaque;
     mk_open F._open;
+    mk_opt_open F._opt_open;
     mk_output_obj F._output_obj;
     mk_output_complete_obj F._output_complete_obj;
     mk_output_complete_exe F._output_complete_exe;
@@ -1327,6 +1333,7 @@ struct
     mk_o3 F._o3;
     mk_opaque F._opaque;
     mk_open F._open;
+    mk_opt_open F._opt_open;
     mk_output_obj F._output_obj;
     mk_output_complete_obj F._output_complete_obj;
     mk_p F._p;
@@ -1835,6 +1842,7 @@ module Default = struct
     let _noautolink = set no_auto_link
     let _o s = output_name := (Some s)
     let _opaque = set opaque
+    let _opt_open = set opt_open
     let _pack = set make_package
     let _plugin _p = plugin := true
     let _pp s = preprocessor := (Some s)
