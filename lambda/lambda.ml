@@ -642,8 +642,12 @@ let rec free_variables = function
       | None -> set
       | Some failaction -> Ident.Set.union set (free_variables failaction)
       end
-  | Lextswitch _ ->
-      fatal_error "Lambda.free_variables: uninitialized extswitch"
+  | Lextswitch (arg, sw, _) ->
+      let set =
+          free_variables_list (free_variables arg)
+            (List.map snd sw.esw_case)
+      in
+      Ident.Set.union set (free_variables sw.esw_default)
   | Lstringswitch (arg,cases,default,_) ->
       let set =
         free_variables_list (free_variables arg)
