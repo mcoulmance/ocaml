@@ -21,8 +21,8 @@ let rec table_insert ((id, value) as va) table =
         else if id > nid then
           Node (nid, nvalue, left, table_insert va right)
         else
-          (* This should happen when matching over rebinded type, so discard previous value*)
-          Node (nid, value, left, right)
+          (* This should happen when matching over rebinded contstructor *)
+          Node (nid, nvalue, left, right)
 
 let rec table_find id table =
   match table with
