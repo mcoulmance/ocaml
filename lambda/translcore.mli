@@ -49,12 +49,12 @@ val transl_scoped_exp : scopes:scopes -> expression -> lambda
    an environment that will be used by initialize_ext_env to create the dispatch table.
    If -optopen is not set, it does nothing.
 *)
-val initialize_ext_switch : lambda -> (Ident.t * lambda_ext_switch * t) list * lambda
+val initialize_ext_switch : lambda -> (Ident.t * lambda_ext_switch) list * lambda
 
 (* Creates dispatch tables based on a given environment, applying variable substitution if
    needed. If -optopen is not set, it does nothing.
 *)
-val initialize_ext_env : ?subst:lambda Ident.Map.t option -> (Ident.t * lambda_ext_switch * t) list -> lambda -> lambda
+val initialize_ext_env : ?subst:lambda Ident.Map.t option -> (Ident.t * lambda_ext_switch) list -> lambda -> lambda
 
 
 type error =

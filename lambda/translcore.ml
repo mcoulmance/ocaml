@@ -1395,7 +1395,7 @@ and initialize_ext_switch lam =
             )
           in
 
-          (((tag_table, sw, loc) :: env), switch)
+          (((tag_table, sw) :: env), switch)
       | Lstringswitch (l1, ll, l2, loc) ->
           let (env, l1) = init_lam env l1 in
           let (env, ll) = flmap2 init_lam env ll in
@@ -1461,7 +1461,7 @@ and initialize_ext_switch lam =
       List.map (fun (id, _) -> Ident.name id) params
 
     and extract_ctrs_to_init names env =
-      List.fold_left (fun (to_init, other) ((_, { esw_table; _ }, _) as e) ->
+      List.fold_left (fun (to_init, other) ((_, { esw_table; _ }) as e) ->
         match List.find_opt (fun (path, _) -> List.mem (Ident.name (Path.head path)) names) esw_table with
           | Some _ ->
               (e :: to_init), other
@@ -1487,12 +1487,12 @@ and initialize_ext_env ?(subst = None) env lam =
         block [ tuple ext id loc; rem ] loc)
       table (Lconst (const_int 0))
   in
-  let make_call (id, sw, loc) rem =
+  let make_call (id, sw) rem =
     alias Strict id
       (Lapply {
         ap_func = transl_prim "CamlinternalExtension" "init_match";
-        ap_args = [ make_table sw.esw_table sw.esw_env loc ];
-        ap_loc = loc;
+        ap_args = [ make_table sw.esw_table sw.esw_env Loc_unknown ];
+        ap_loc = Loc_unknown;
         ap_tailcall = Default_tailcall;
         ap_inlined = Never_inline;
         ap_specialised = Default_specialise;

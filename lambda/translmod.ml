@@ -211,7 +211,7 @@ let compose_coercions c1 c2 =
    of one of the constructor the table refers to).
 *)
 let extract_ctrs_to_init tl env =
-  List.fold_left (fun (to_init, other) ((_, { esw_table; _}, _) as e)  ->
+  List.fold_left (fun (to_init, other) ((_, { esw_table; _}) as e)  ->
     match List.find_opt (fun {ext_name; _} ->
       List.find_opt (fun (path, _) -> Path.name path = ext_name.txt) esw_table |> Option.is_some ) tl with
     | Some _ ->
