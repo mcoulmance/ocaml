@@ -1477,30 +1477,43 @@ and initialize_ext_switch lam =
     [], lam
 
 and initialize_ext_env ?(subst = None) env lam =
-  let make_table table env loc =
-    let block elt loc = Lprim (Pmakeblock (0, Immutable, None), elt, loc) in
-    let tuple a b loc = block [ a; Lconst (const_int b) ] loc in
+  let make_table table env =
+    let block elt = Lprim (Pmakeblock (0, Immutable, None), elt, Loc_unknown) in
+    let tuple a b = block [ a; Lconst (const_int b) ] in
 
     List.fold_right
       (fun (path, id) rem ->
-        let ext = transl_extension_path loc env path in
-        block [ tuple ext id loc; rem ] loc)
+        let ext = transl_extension_path Loc_unknown env path in
+        block [ tuple ext id; rem ] )
       table (Lconst (const_int 0))
   in
-  let make_call (id, sw) rem =
+  let make_call id sw rem =
     alias Strict id
       (Lapply {
         ap_func = transl_prim "CamlinternalExtension" "init_match";
-        ap_args = [ make_table sw.esw_table sw.esw_env Loc_unknown ];
+        ap_args = [ make_table sw.esw_table sw.esw_env ];
         ap_loc = Loc_unknown;
         ap_tailcall = Default_tailcall;
-        ap_inlined = Never_inline;
+        ap_inlined = Default_inline;
         ap_specialised = Default_specialise;
       })
       rem
   in
+  let make_calls (ids, sw) rem =
+    match !ids with
+      | [] -> assert false
+      | (id :: ids') ->
+          let aliases =
+            List.fold_left
+              (fun acc id' ->
+                alias Alias id' (Lvar id) acc)
+              rem ids'
+          in
+          make_call id sw aliases
+  in
   if !Clflags.opt_open then
-    let lam = List.fold_right make_call env lam in
+    let merged = merge_identical_tables env in
+    let lam = List.fold_right make_calls merged lam in
     match subst with
       | None ->
           lam
@@ -1508,6 +1521,32 @@ and initialize_ext_env ?(subst = None) env lam =
           Lambda.subst (fun _ _ e -> e) subst lam
   else
     lam
+
+
+and merge_identical_tables env =
+  let rec find_equiv sw env =
+    match env with
+      | [] -> None
+      | (ids, sw') :: rem ->
+          if Env.same_type_declarations sw.esw_env sw'.esw_env
+            && List.equal
+                (fun (pa, ia) (pb, ib) -> Path.same pa pb && ia = ib)
+               sw.esw_table sw'.esw_table
+          then
+            Some ids
+          else
+            find_equiv sw rem
+  in
+
+  List.fold_left
+    (fun acc (id, sw) ->
+      match find_equiv sw acc with
+        | Some ids ->
+            ids := id :: !ids;
+            acc
+        | None ->
+            (ref [id], sw) :: acc
+    ) [] env
 
 and get_field offset immediate arg loc =
   Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc)
