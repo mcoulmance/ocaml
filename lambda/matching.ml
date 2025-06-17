@@ -3390,10 +3390,11 @@ let combine_regular_constructor loc arg cstr partial ctx def
   in
   (lambda1, Jumps.union local_jumps total1)
 
-let combine_constructor loc arg pat_env cstr partial ctx def actions =
+let combine_constructor loc arg pat_env cstr partial ctx def ((ctrs, _, _) as actions) =
   match cstr.cstr_tag with
   | Cstr_extension _ ->
-      if !Clflags.opt_open then
+      (* It is not worth building a full table for match over one or two constructors *)
+      if !Clflags.opt_open && List.length ctrs > 2 then
         combine_extension_constructor_opt loc arg pat_env partial ctx def actions
       else
         combine_extension_constructor loc arg pat_env partial ctx def actions
