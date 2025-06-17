@@ -49,6 +49,7 @@ let mkexe = native_pack_linker
 let mkmaindll = native_pack_linker
 let flambda = false
 let with_flambda_invariants = false
+let opt_open = false
 let with_cmm_invariants = false
 let with_codegen_invariants = false
 let windows_unicode = false

@@ -247,6 +247,7 @@ AC_SUBST([reserved_header_bits])
 AC_SUBST([frame_pointers])
 AC_SUBST([flambda])
 AC_SUBST([flambda_invariants])
+AC_SUBST([opt_open])
 AC_SUBST([cmm_invariants])
 AC_SUBST([windows_unicode])
 AC_SUBST([align_double])
@@ -545,6 +546,10 @@ AC_ARG_ENABLE([flambda-invariants],
 AC_ARG_ENABLE([cmm-invariants],
   [AS_HELP_STRING([--enable-cmm-invariants],
     [enable invariants checks in Cmm])])
+
+AC_ARG_ENABLE([opt_open],
+  [AS_HELP_STRING([--enable-optopen],
+    [enable optimization for open types])])
 
 AC_ARG_VAR([TARGET_BINDIR],
   [location of the runtime binaries on the target system])
@@ -2663,6 +2668,10 @@ AS_IF([$flambda],
   CMXA_MAGIC_NUMBER=CMXA_FLAMBDA__MAGIC_NUMBER],
   [CMX_MAGIC_NUMBER=CMX_CLAMBDA__MAGIC_NUMBER
   CMXA_MAGIC_NUMBER=CMXA_CLAMBDA__MAGIC_NUMBER])
+
+AS_IF([test x"$enable_optopen" = "xyes"],
+      [opt_open=true],
+      [opt_open=false])
 
 AS_IF([test x"$enable_cmm_invariants" = "xyes"],
   [cmm_invariants=true],

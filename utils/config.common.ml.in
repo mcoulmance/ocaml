@@ -116,6 +116,7 @@ let configuration_variables () =
   p_bool "flambda" flambda;
   p_bool "safe_string" safe_string;
   p_bool "default_safe_string" default_safe_string;
+  p_bool "opt_open" opt_open;
   p_bool "flat_float_array" flat_float_array;
   p_bool "align_double" align_double;
   p_bool "align_int64" align_int64;

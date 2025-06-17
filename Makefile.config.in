@@ -211,6 +211,7 @@ FLAMBDA=@flambda@
 WITH_FLAMBDA_INVARIANTS=@flambda_invariants@
 WITH_CMM_INVARIANTS=@cmm_invariants@
 WITH_CODEGEN_INVARIANTS=@codegen_invariants@
+OPTOPEN=@opt_open@
 FORCE_SAFE_STRING=true
 DEFAULT_SAFE_STRING=true
 WINDOWS_UNICODE=@windows_unicode@

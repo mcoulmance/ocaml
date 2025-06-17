@@ -235,6 +235,9 @@ val flambda : bool
 val with_flambda_invariants : bool
 (** Whether the invariants checks for flambda are enabled *)
 
+val opt_open : bool
+(** Whether the compiler should be compiled with -optopen *)
+
 val with_cmm_invariants : bool
 (** Whether the invariants checks for Cmm are enabled *)
 
