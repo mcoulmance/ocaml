@@ -1,4 +1,10 @@
-(* TEST *)
+(* TEST
+  {
+    flags = "-optopen";
+  }
+  {
+  }
+ *)
 
 type t = ..
 

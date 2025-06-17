@@ -1,4 +1,10 @@
-(* TEST *)
+(* TEST
+  {
+    flags = "-optopen";
+  }
+  {
+  }
+ *)
 
 (**
    Test that value match failure in a match block raises Match_failure.

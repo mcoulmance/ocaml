@@ -1,4 +1,10 @@
-(* TEST *)
+(* TEST
+  {
+    flags = "-optopen";
+  }
+  {
+  }
+ *)
 
 (* Tests for matchings on integers and characters *)
 

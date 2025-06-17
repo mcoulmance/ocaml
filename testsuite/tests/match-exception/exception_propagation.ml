@@ -1,4 +1,10 @@
-(* TEST *)
+(* TEST
+  {
+    flags = "-optopen";
+  }
+  {
+  }
+ *)
 
 (**
    Test that match allows exceptions to propagate.

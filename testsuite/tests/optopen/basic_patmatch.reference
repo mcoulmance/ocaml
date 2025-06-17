@@ -1,0 +1,7 @@
+A
+B
+C(42)
+D(C(42))
+D(D(A))
+D(D(D(D(C(80)))))
+unknown

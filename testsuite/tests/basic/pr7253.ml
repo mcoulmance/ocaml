@@ -1,4 +1,10 @@
-(* TEST *)
+(* TEST
+  {
+    flags = "-optopen";
+  }
+  {
+  }
+ *)
 
 (* MPR#7253: "at_exit functions get called twice if a callback raises
    and prevents earlier handlers to execute." *)
