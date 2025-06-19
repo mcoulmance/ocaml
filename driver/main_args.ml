@@ -887,7 +887,6 @@ module type Compiler_options = sig
   val _noautolink : unit -> unit
   val _o : string -> unit
   val _opaque :  unit -> unit
-(*  val _opt_open : unit -> unit *)
   val _output_obj : unit -> unit
   val _output_complete_obj : unit -> unit
   val _pack : unit -> unit
@@ -1848,7 +1847,6 @@ module Default = struct
     let _noautolink = set no_auto_link
     let _o s = output_name := (Some s)
     let _opaque = set opaque
-(*    let _opt_open = set opt_open *)
     let _pack = set make_package
     let _plugin _p = plugin := true
     let _pp s = preprocessor := (Some s)
