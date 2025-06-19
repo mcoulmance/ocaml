@@ -1414,7 +1414,7 @@ let transl_store_structure ~scopes glob map prims aliases str =
   in
   let aliases = make_sequence store_alias aliases in
   let (env, lam) = transl_store ~scopes (global_path glob) !transl_store_subst aliases str in
-  let lam = initialize_ext_env env lam in
+  let lam = initialize_ext_env ~subst:(Some !transl_store_subst) env lam in
   List.fold_right store_primitive prims lam
 
 (* Transform a coercion and the list of value identifiers defined by
@@ -1557,111 +1557,118 @@ let close_toplevel_term lam =
                 (free_variables lam) lam
 
 let transl_toplevel_item ~scopes item =
-  match item.str_desc with
-    Tstr_eval (expr, _)
-  | Tstr_value(Nonrecursive,
-               [{vb_pat = {pat_desc=Tpat_any};vb_expr = expr}]) ->
-      (* special compilation for toplevel "let _ = expr", so
-         that Toploop can display the result of the expression.
-         Otherwise, the normal compilation would result
-         in a Lsequence returning unit. *)
-      transl_exp ~scopes expr
-  | Tstr_value(rec_flag, pat_expr_list) ->
-      let idents = let_bound_idents pat_expr_list in
-      transl_let ~scopes ~in_structure:true rec_flag pat_expr_list
-        (make_sequence toploop_setvalue_id idents)
-  | Tstr_typext(tyext) ->
-      let idents =
-        List.map (fun ext -> ext.ext_id) tyext.tyext_constructors
-      in
-      (* we need to use unique name in case of multiple
-         definitions of the same extension constructor in the toplevel *)
-      List.iter set_toplevel_unique_name idents;
-        transl_type_extension ~scopes item.str_env None tyext
+  let lam =
+    match item.str_desc with
+      Tstr_eval (expr, _)
+    | Tstr_value(Nonrecursive,
+                 [{vb_pat = {pat_desc=Tpat_any};vb_expr = expr}]) ->
+        (* special compilation for toplevel "let _ = expr", so
+           that Toploop can display the result of the expression.
+           Otherwise, the normal compilation would result
+           in a Lsequence returning unit. *)
+        transl_exp ~scopes expr
+    | Tstr_value(rec_flag, pat_expr_list) ->
+        let idents = let_bound_idents pat_expr_list in
+        transl_let ~scopes ~in_structure:true rec_flag pat_expr_list
           (make_sequence toploop_setvalue_id idents)
-  | Tstr_exception ext ->
-      set_toplevel_unique_name ext.tyexn_constructor.ext_id;
-      toploop_setvalue ext.tyexn_constructor.ext_id
-        (transl_extension_constructor ~scopes
-           item.str_env None ext.tyexn_constructor)
-  | Tstr_module {mb_id=None; mb_presence=Mp_present; mb_expr=modl} ->
-      transl_module ~scopes Tcoerce_none None modl
-  | Tstr_module {mb_id=Some id; mb_presence=Mp_present; mb_expr=modl} ->
-      (* we need to use the unique name for the module because of issues
-         with "open" (PR#8133) *)
-      set_toplevel_unique_name id;
-      let lam = transl_module
-                  ~scopes:(enter_module_definition ~scopes id)
-                  Tcoerce_none (Some(Pident id)) modl in
-      toploop_setvalue id lam
-  | Tstr_recmodule bindings ->
-      let idents = List.filter_map (fun mb -> mb.mb_id) bindings in
-      compile_recmodule ~scopes
-        (fun id modl ->
-           match id with
-           | None ->
-             transl_module ~scopes Tcoerce_none None modl
-           | Some id ->
-             transl_module
-               ~scopes:(enter_module_definition ~scopes id)
-               Tcoerce_none (Some (Pident id)) modl)
-        bindings
-        (make_sequence toploop_setvalue_id idents)
-  | Tstr_class cl_list ->
-      (* we need to use unique names for the classes because there might
-         be a value named identically *)
-      let (ids, class_bindings) = transl_class_bindings ~scopes cl_list in
-      List.iter set_toplevel_unique_name ids;
-      Value_rec_compiler.compile_letrec class_bindings
-        (make_sequence toploop_setvalue_id ids)
-  | Tstr_include incl ->
-      let ids = bound_value_identifiers incl.incl_type in
-      let modl = incl.incl_mod in
-      let mid = Ident.create_local "include" in
-      let rec set_idents pos = function
-        [] ->
-          lambda_unit
-      | id :: ids ->
-          Lsequence(toploop_setvalue id
-                      (Lprim(Pfield (pos, Pointer, Mutable),
-                             [Lvar mid], Loc_unknown)),
-                    set_idents (pos + 1) ids) in
-      Llet(Strict, Pgenval, mid,
-           transl_module ~scopes Tcoerce_none None modl, set_idents 0 ids)
-  | Tstr_primitive descr ->
-      record_primitive descr.val_val;
-      lambda_unit
-  | Tstr_open od ->
-      let pure = pure_module od.open_expr in
-      (* this optimization shouldn't be needed because Simplif would
-          actually remove the [Llet] when it's not used.
-          But since [scan_used_globals] runs before Simplif, we need to do
-          it. *)
-      begin match od.open_bound_items with
-      | [] when pure = Alias -> lambda_unit
-      | _ ->
-          let ids = bound_value_identifiers od.open_bound_items in
-          let mid = Ident.create_local "open" in
-          let rec set_idents pos = function
-              [] ->
-                lambda_unit
-            | id :: ids ->
-                Lsequence(toploop_setvalue id
-                            (Lprim(Pfield (pos, Pointer, Mutable),
-                                  [Lvar mid], Loc_unknown)),
-                          set_idents (pos + 1) ids)
-          in
-          Llet(pure, Pgenval, mid,
-               transl_module ~scopes Tcoerce_none None od.open_expr,
-               set_idents 0 ids)
-      end
-  | Tstr_module ({mb_presence=Mp_absent}) ->
-      lambda_unit
-  | Tstr_modtype _
-  | Tstr_type _
-  | Tstr_class_type _
-  | Tstr_attribute _ ->
-      lambda_unit
+    | Tstr_typext(tyext) ->
+        let idents =
+          List.map (fun ext -> ext.ext_id) tyext.tyext_constructors
+        in
+        (* we need to use unique name in case of multiple
+           definitions of the same extension constructor in the toplevel *)
+        List.iter set_toplevel_unique_name idents;
+          transl_type_extension ~scopes item.str_env None tyext
+            (make_sequence toploop_setvalue_id idents)
+    | Tstr_exception ext ->
+        set_toplevel_unique_name ext.tyexn_constructor.ext_id;
+        toploop_setvalue ext.tyexn_constructor.ext_id
+          (transl_extension_constructor ~scopes
+             item.str_env None ext.tyexn_constructor)
+    | Tstr_module {mb_id=None; mb_presence=Mp_present; mb_expr=modl} ->
+        transl_module ~scopes Tcoerce_none None modl
+    | Tstr_module {mb_id=Some id; mb_presence=Mp_present; mb_expr=modl} ->
+        (* we need to use the unique name for the module because of issues
+           with "open" (PR#8133) *)
+        set_toplevel_unique_name id;
+        let lam = transl_module
+                    ~scopes:(enter_module_definition ~scopes id)
+                    Tcoerce_none (Some(Pident id)) modl in
+        toploop_setvalue id lam
+    | Tstr_recmodule bindings ->
+        let idents = List.filter_map (fun mb -> mb.mb_id) bindings in
+        compile_recmodule ~scopes
+          (fun id modl ->
+             match id with
+             | None ->
+               transl_module ~scopes Tcoerce_none None modl
+             | Some id ->
+               transl_module
+                 ~scopes:(enter_module_definition ~scopes id)
+                 Tcoerce_none (Some (Pident id)) modl)
+          bindings
+          (make_sequence toploop_setvalue_id idents)
+    | Tstr_class cl_list ->
+        (* we need to use unique names for the classes because there might
+           be a value named identically *)
+        let (ids, class_bindings) = transl_class_bindings ~scopes cl_list in
+        List.iter set_toplevel_unique_name ids;
+        Value_rec_compiler.compile_letrec class_bindings
+          (make_sequence toploop_setvalue_id ids)
+    | Tstr_include incl ->
+        let ids = bound_value_identifiers incl.incl_type in
+        let modl = incl.incl_mod in
+        let mid = Ident.create_local "include" in
+        let rec set_idents pos = function
+          [] ->
+            lambda_unit
+        | id :: ids ->
+            Lsequence(toploop_setvalue id
+                        (Lprim(Pfield (pos, Pointer, Mutable),
+                               [Lvar mid], Loc_unknown)),
+                      set_idents (pos + 1) ids) in
+        Llet(Strict, Pgenval, mid,
+             transl_module ~scopes Tcoerce_none None modl, set_idents 0 ids)
+    | Tstr_primitive descr ->
+        record_primitive descr.val_val;
+        lambda_unit
+    | Tstr_open od ->
+        let pure = pure_module od.open_expr in
+        (* this optimization shouldn't be needed because Simplif would
+            actually remove the [Llet] when it's not used.
+            But since [scan_used_globals] runs before Simplif, we need to do
+            it. *)
+        begin match od.open_bound_items with
+        | [] when pure = Alias -> lambda_unit
+        | _ ->
+            let ids = bound_value_identifiers od.open_bound_items in
+            let mid = Ident.create_local "open" in
+            let rec set_idents pos = function
+                [] ->
+                  lambda_unit
+              | id :: ids ->
+                  Lsequence(toploop_setvalue id
+                              (Lprim(Pfield (pos, Pointer, Mutable),
+                                    [Lvar mid], Loc_unknown)),
+                            set_idents (pos + 1) ids)
+            in
+            Llet(pure, Pgenval, mid,
+                 transl_module ~scopes Tcoerce_none None od.open_expr,
+                 set_idents 0 ids)
+        end
+    | Tstr_module ({mb_presence=Mp_absent}) ->
+        lambda_unit
+    | Tstr_modtype _
+    | Tstr_type _
+    | Tstr_class_type _
+    | Tstr_attribute _ ->
+        lambda_unit
+  in
+  if !Clflags.opt_open then
+    let (env, lam) = initialize_ext_switch lam in
+    initialize_ext_env env lam
+  else
+    lam
 
 let transl_toplevel_item_and_close ~scopes itm =
   close_toplevel_term

@@ -855,6 +855,7 @@ module type Core_options = sig
   val _drawlambda : unit -> unit
   val _dlambda : unit -> unit
 
+  val _opt_open : unit -> unit
 end
 
 module type Compiler_options = sig
@@ -886,7 +887,7 @@ module type Compiler_options = sig
   val _noautolink : unit -> unit
   val _o : string -> unit
   val _opaque :  unit -> unit
-  val _opt_open : unit -> unit
+(*  val _opt_open : unit -> unit *)
   val _output_obj : unit -> unit
   val _output_complete_obj : unit -> unit
   val _pack : unit -> unit
@@ -1252,6 +1253,8 @@ struct
     mk_args F._args;
     mk_args0 F._args0;
     mk_eval F._eval;
+
+    mk_opt_open F._opt_open;
   ]
 end;;
 
@@ -1536,6 +1539,8 @@ module Make_opttop_options (F : Opttop_options) = struct
     mk_dstartup F._dstartup;
     mk_dump_pass F._dump_pass;
     mk_eval F._eval;
+
+    mk_opt_open F._opt_open;
   ]
 end;;
 
@@ -1673,6 +1678,7 @@ module Default = struct
 
     let anonymous = Compenv.anonymous
 
+    let _opt_open = set opt_open
   end
 
   module Core = struct
@@ -1842,7 +1848,7 @@ module Default = struct
     let _noautolink = set no_auto_link
     let _o s = output_name := (Some s)
     let _opaque = set opaque
-    let _opt_open = set opt_open
+(*    let _opt_open = set opt_open *)
     let _pack = set make_package
     let _plugin _p = plugin := true
     let _pp s = preprocessor := (Some s)

@@ -77,6 +77,7 @@ module type Core_options = sig
   val _drawlambda : unit -> unit
   val _dlambda : unit -> unit
 
+  val _opt_open : unit -> unit
 end
 
 module type Compiler_options = sig
@@ -108,7 +109,7 @@ module type Compiler_options = sig
   val _noautolink : unit -> unit
   val _o : string -> unit
   val _opaque :  unit -> unit
-  val _opt_open : unit -> unit
+ (* val _opt_open : unit -> unit *)
   val _output_obj : unit -> unit
   val _output_complete_obj : unit -> unit
   val _pack : unit -> unit
