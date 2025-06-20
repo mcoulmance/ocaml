@@ -4,52 +4,71 @@ external ( < ) : int -> int -> bool = "%lessthan"
 external ( > ) : int -> int -> bool = "%greaterthan"
 external ( = ) : int -> int -> bool = "%equal"
 
+
+type color = Red | Black
+
 type table =
-  | Node of int * int * table * table
+  | Node of color * int * int * table * table
   | Leaf
 
 let no_match_found = 0
 
-let rec table_insert ((id, value) as va) table =
+let balance = function
+  | Black, z1, z2, Node (Red, y1, y2, Node (Red, x1, x2, a, b), c), d
+  | Black, z1, z2, Node (Red, x1, x2, a, Node (Red, y1, y2, b, c)), d
+  | Black, x1, x2, a, Node (Red, z1, z2, Node (Red, y1, y2, b, c), d)
+  | Black, x1, x2, a, Node (Red, y1, y2, b, Node (Red, z1, z2, c, d)) ->
+    Node (Red, y1, y2, Node (Black, x1, x2, a, b), Node (Black, z1, z2, c, d))
+  | a, b, c, d, e -> Node (a, b, c, d, e)
+
+let rec insert ((id, value) as va) table =
   match table with
     | Leaf ->
-        Node (id, value, Leaf, Leaf)
+        Node (Red, id, value, Leaf, Leaf)
 
-    | Node (nid, nvalue, left, right) ->
+    | Node (color, nid, nvalue, left, right) as node ->
         if id < nid then
-          Node (nid, nvalue, table_insert va left, right)
+          balance (color, nid, nvalue, insert va left, right)
         else if id > nid then
-          Node (nid, nvalue, left, table_insert va right)
+          balance (color, nid, nvalue, left, insert va right)
         else
-          (* This should happen when matching over rebinded contstructor *)
-          Node (nid, nvalue, left, right)
+          (* This should happen when matching over rebinded constructor.
+             This constructors are added in reverse order we simply need to
+             discard the to-be-inserted value to preserve the rebinding property
+           *)
+         node
 
-let rec table_find id table =
+let insert va table =
+  match insert va table with
+    | Node (_, a, b, c, d) ->
+        Node (Black, a, b, c, d)
+    | _ ->
+        assert false
+
+
+let rec find id table =
   match table with
     | Leaf ->
         no_match_found
 
-    | Node (nid, nvalue, left, right) ->
+    | Node (_, nid, nvalue, left, right) ->
         if nid = id then
           nvalue
         else if id < nid then
-          table_find id left
+          find id left
         else
-          table_find id right
+          find id right
 
-
-let rec init_table env table =
+let rec init env table =
   match env with
     | (constr, value) :: tl ->
         let id = field constr 1 in
-        init_table tl (table_insert (id, value) table)
+        init tl (insert (id, value) table)
 
     | [] ->
         table
 
-
 let init_match env =
-  let table = init_table env Leaf in
+  let table = init env Leaf in
 
-  fun id ->
-    table_find id table
+  fun id -> find id table
