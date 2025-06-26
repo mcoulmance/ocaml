@@ -205,6 +205,7 @@ type type_mismatch =
   | Private_variant of type_expr * type_expr * private_variant_mismatch
   | Private_object of type_expr * type_expr * private_object_mismatch
   | Variance
+  | Open_mismatch
   | Record_mismatch of record_mismatch
   | Variant_mismatch of variant_change list
   | Unboxed_representation of position
@@ -399,7 +400,6 @@ let report_extension_constructor_mismatch first second decl env ppf err =
         constructor ext2
         (report_constructor_mismatch first second decl env) err
 
-
 let report_private_variant_mismatch first second decl env ppf err =
   let pr fmt = Fmt.fprintf ppf fmt in
   let pp_tag ppf x = Fmt.fprintf ppf "`%s" x in
@@ -462,6 +462,8 @@ let report_type_mismatch first second decl env ppf err =
       report_private_object_mismatch env ppf mismatch
   | Variance ->
       pr "Their variances do not agree."
+  | Open_mismatch ->
+      pr "Type annotation [@optopen] must be specified in both the interface and the implementation"
   | Record_mismatch err ->
       report_record_mismatch first second decl env ppf err
   | Variant_mismatch err ->
@@ -1020,7 +1022,17 @@ let type_declarations ?(equality = false) ~loc env ~mark name
           decl1.type_params decl2.type_params
           labels1 labels2
           rep1 rep2
-    | (Type_open, Type_open) -> None
+    | (Type_open, Type_open) ->
+        let has_opt attr =
+          List.exists (fun { Parsetree.attr_name; _ } -> attr_name.txt = "optopen") attr
+        in
+        let opt1 = has_opt decl1.type_attributes in
+        let opt2 = has_opt decl2.type_attributes in
+
+        if opt1 <> opt2 then
+          Some Open_mismatch
+        else
+          None
     | (Type_external n1, Type_external n2) when n1 = n2 -> None
     | (_, _) -> Some (Kind (of_kind decl1.type_kind, of_kind decl2.type_kind))
   in

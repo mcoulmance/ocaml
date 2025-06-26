@@ -1417,13 +1417,22 @@ let tree_of_type_decl id decl =
         assert (decl.type_private = Public);
         (Otyp_external name, Public, false)
   in
+  let opt_open =
+    match decl.type_kind with
+    | Type_open ->
+        List.exists
+          (fun { Parsetree.attr_name; _ } -> attr_name.txt = "optopen")
+          decl.type_attributes
+    | _ -> false
+  in
     { otype_name = name;
       otype_params = args;
       otype_type = ty;
       otype_private = priv;
       otype_immediate = Type_immediacy.of_attributes decl.type_attributes;
       otype_unboxed = unboxed;
-      otype_cstrs = constraints }
+      otype_cstrs = constraints;
+      otype_optopen = opt_open; }
 
 let add_type_decl_to_preparation id decl =
    ignore @@ prepare_decl id decl

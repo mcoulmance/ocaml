@@ -710,13 +710,19 @@ and print_out_type_decl kwd ppf td =
           td.otype_params
           print_lident td.otype_name
   in
+  let type_has_opt ppf =
+    if td.otype_optopen then
+      fprintf ppf "[@optopen] "
+    else
+      fprintf ppf ""
+  in
   let print_manifest ppf =
     function
       Otyp_manifest (ty, _) -> fprintf ppf " =@ %a" !out_type ty
     | _ -> ()
   in
   let print_name_params ppf =
-    fprintf ppf "%s %t%a" kwd type_defined print_manifest td.otype_type
+    fprintf ppf "%s %t%t%a" kwd type_has_opt type_defined print_manifest td.otype_type
   in
   let ty =
     match td.otype_type with
