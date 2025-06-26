@@ -368,6 +368,8 @@ let build_initial_env add_type add_extension empty_env =
                             (Location.mknoloc "ocaml.warn_on_literal_pattern")
                             (Parsetree.PStr [])];
         ext_uid = Uid.of_predef_id id;
+        ext_rebind = None;
+        ext_opt = false;
       }
   in
   List.fold_left (fun env tconstr ->

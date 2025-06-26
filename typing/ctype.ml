@@ -5642,6 +5642,8 @@ let nondep_extension_constructor env ids ext =
         ext_attributes = ext.ext_attributes;
         ext_loc = ext.ext_loc;
         ext_uid = ext.ext_uid;
+        ext_rebind = ext.ext_rebind;
+        ext_opt = ext.ext_opt;
       }
   with Nondep_cannot_erase _ as exn ->
     clear_hash ();

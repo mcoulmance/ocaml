@@ -1267,14 +1267,20 @@ let transl_type_decl env rec_flag sdecl_list =
 let transl_extension_constructor ~scope env type_path type_params
                                  typext_params priv sext =
   let id = Ident.create_scoped ~scope sext.pext_name.txt in
-  let args, ret_type, kind =
+  let opt =
+    let pty = Env.find_type type_path env in
+    List.exists
+      (fun { Parsetree.attr_name; _ } -> attr_name.txt = "optopen")
+      pty.type_attributes
+  in
+  let args, ret_type, kind, rebind =
     match sext.pext_kind with
       Pext_decl(svars, sargs, sret_type) ->
         let targs, tret_type, args, ret_type =
           make_constructor env sext.pext_loc type_path typext_params
             svars sargs sret_type
         in
-          args, ret_type, Text_decl(svars, targs, tret_type)
+          args, ret_type, Text_decl(svars, targs, tret_type), None
     | Pext_rebind lid ->
         let usage : Env.constructor_usage =
           if priv = Public then Env.Exported else Env.Exported_private
@@ -1357,7 +1363,7 @@ let transl_extension_constructor ~scope env type_path type_params
               in
               Types.Cstr_record lbls
         in
-        args, ret_type, Text_rebind(path, lid)
+        args, ret_type, Text_rebind(path, lid), Some path
   in
   let ext =
     { ext_type_path = type_path;
@@ -1368,6 +1374,8 @@ let transl_extension_constructor ~scope env type_path type_params
       Types.ext_loc = sext.pext_loc;
       Types.ext_attributes = sext.pext_attributes;
       ext_uid = Uid.mk ~current_unit:(Env.get_current_unit ());
+      ext_rebind = rebind;
+      ext_opt = opt;
     }
   in
   let ext_cstrs =

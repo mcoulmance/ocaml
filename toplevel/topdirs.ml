@@ -348,7 +348,9 @@ let () =
              ext_private = Asttypes.Public;
              ext_loc = desc.cstr_loc;
              ext_attributes = desc.cstr_attributes;
-             ext_uid = desc.cstr_uid; }
+             ext_uid = desc.cstr_uid;
+             ext_rebind = None;
+             ext_opt = false; }
            in
              [Sig_typext (id, ext, Text_first, Exported)]
        else
@@ -380,6 +382,8 @@ let () =
            ext_loc = desc.cstr_loc;
            ext_attributes = desc.cstr_attributes;
            ext_uid = desc.cstr_uid;
+           ext_rebind = None;
+           ext_opt = false;
          }
        in
          [Sig_typext (id, ext, Text_exception, Exported)]

@@ -490,6 +490,8 @@ let extension_constructor' copy_scope s ext =
     ext_attributes = attrs s ext.ext_attributes;
     ext_loc = if s.for_saving then Location.none else ext.ext_loc;
     ext_uid = ext.ext_uid;
+    ext_rebind = ext.ext_rebind;
+    ext_opt = ext.ext_opt;
   }
 
 let extension_constructor s ext =
