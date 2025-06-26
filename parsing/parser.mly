@@ -3525,8 +3525,10 @@ label_declaration_semi:
     { $1 }
 ;
 %inline sig_type_extension:
-  type_extension(extension_constructor_declaration)
-    { $1 }
+    type_extension(extension_constructor_declaration)
+      { $1 }
+  | type_extension(extension_constructor_rebind)
+      { $1 }
 ;
 %inline type_extension(declaration):
   TYPE
