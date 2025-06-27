@@ -1125,11 +1125,12 @@ let extension_constructors ~loc env ~mark id ext1 ext2 =
       | _, _ -> (
         match ext1.ext_rebind, ext2.ext_rebind with
         | Some p1, Some p2 ->
-            if Path.same p1 p2 then
+            let n1, n2 = Path.name p1, Path.name p2 in
+            if n1 = n2 then
               None
             else
               Some (Constructor_mismatch (id, ext1, ext2,
-                Rebinded_constructors_mismatch (Path.name p1, Path.name p2)))
+                Rebinded_constructors_mismatch (n1, n2)))
         | Some p1, None when ext1.ext_opt ->
             Some (Constructor_mismatch (id, ext1, ext2,
               Rebinding_mismatch (Path.name ext1.ext_type_path, Path.name p1, Second, true)))
