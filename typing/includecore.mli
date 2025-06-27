@@ -70,6 +70,8 @@ type constructor_mismatch =
   | Inline_record of record_change list
   | Kind of position
   | Explicit_return_type of position
+  | Rebinding_mismatch of string * string * position * bool
+  | Rebinded_constructors_mismatch of string * string
 
 type extension_constructor_mismatch =
   | Constructor_privacy

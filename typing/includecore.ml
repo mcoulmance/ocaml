@@ -173,6 +173,8 @@ type constructor_mismatch =
   | Inline_record of record_change list
   | Kind of position
   | Explicit_return_type of position
+  | Rebinding_mismatch of string * string * position * bool
+  | Rebinded_constructors_mismatch of string * string
 
 type extension_constructor_mismatch =
   | Constructor_privacy
@@ -350,6 +352,23 @@ let report_constructor_mismatch first second decl env ppf err =
       pr "%s has explicit return type and %s doesn't."
         (String.capitalize_ascii (choose ord first second))
         (choose_other ord first second)
+  | Rebinding_mismatch (tname, cname, ord, is_opt) ->
+      let opt_str _ =
+        if is_opt then
+          pr
+          "\nType %s has been declared with [@optopen], so declaration must \
+           match in interface and implementation."
+           tname
+      in
+      pr "%s is declared as a rebinding for %s, but %s is not. %t"
+          (String.capitalize_ascii (choose ord first second))
+          (String.capitalize_ascii cname)
+          (choose_other ord first second)
+          opt_str
+  | Rebinded_constructors_mismatch (name1, name2) ->
+      pr "the first is declared as a rebinding of %s, but the second is declared as a rebinding for %s"
+      name1
+      name2
 
 let pp_variant_diff first second prefix decl env ppf (x : variant_change) =
   match x with
@@ -1103,4 +1122,22 @@ let extension_constructors ~loc env ~mark id ext1 ext2 =
     | None ->
       match ext1.ext_private, ext2.ext_private with
       | Private, Public -> Some Constructor_privacy
-      | _, _ -> None
+      | _, _ -> (
+        match ext1.ext_rebind, ext2.ext_rebind with
+        | Some p1, Some p2 ->
+            if Path.same p1 p2 then
+              None
+            else
+              Some (Constructor_mismatch (id, ext1, ext2,
+                Rebinded_constructors_mismatch (Path.name p1, Path.name p2)))
+        | Some p1, None when ext1.ext_opt ->
+            Some (Constructor_mismatch (id, ext1, ext2,
+              Rebinding_mismatch (Path.name ext1.ext_type_path, Path.name p1, Second, true)))
+
+        | None, Some p2  ->
+            Some (Constructor_mismatch (id, ext1, ext2,
+              Rebinding_mismatch (Path.name ext2.ext_type_path, Path.name p2, First, false)))
+
+        | _, _ ->
+            None
+      )
