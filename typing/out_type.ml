@@ -1272,6 +1272,7 @@ let tree_of_single_constructor cd =
       ocstr_name = name;
       ocstr_args = args;
       ocstr_return_type = ret;
+      ocstr_rebind = None;
   }
 
 (* When printing GADT constructor, we need to forget the naming decision we took
@@ -1528,13 +1529,15 @@ let prepared_tree_of_extension_constructor
       ext.ext_args
       ext.ext_ret_type
   in
+  let rebind = Option.bind ext.ext_rebind (fun path -> Some (Path.name path)) in
   let ext =
     { oext_name = name;
       oext_type_name = ty_name;
       oext_type_params = ty_params;
       oext_args = args;
       oext_ret_type = ret;
-      oext_private = ext.ext_private }
+      oext_private = ext.ext_private;
+      oext_rebind = rebind }
   in
   let es =
     match es with

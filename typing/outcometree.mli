@@ -95,6 +95,7 @@ and out_constructor = {
   ocstr_name: string;
   ocstr_args: out_type list;
   ocstr_return_type: out_type option;
+  ocstr_rebind: string option;
 }
 
 and out_package = {
@@ -149,7 +150,8 @@ and out_extension_constructor =
     oext_type_params: string list;
     oext_args: out_type list;
     oext_ret_type: out_type option;
-    oext_private: Asttypes.private_flag }
+    oext_private: Asttypes.private_flag;
+    oext_rebind: string option }
 and out_type_extension =
   { otyext_name: string;
     otyext_params: string list;

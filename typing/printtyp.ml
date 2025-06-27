@@ -107,11 +107,13 @@ module Doc = struct
         ext.ext_args
         ext.ext_ret_type
     in
+    let rebind = Option.bind ext.ext_rebind (fun path -> Some (Path.name path)) in
     Fmt.fprintf ppf "@[<hv>%a@]"
       !Oprint.out_constr {
       Outcometree.ocstr_name = name;
       ocstr_args = args;
       ocstr_return_type = ret;
+      ocstr_rebind = rebind;
     }
 
   (* Print a signature body (used by -i when compiling a .ml) *)

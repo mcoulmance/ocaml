@@ -553,6 +553,7 @@ let constructor_of_extension_constructor
     ocstr_name = ext.oext_name;
     ocstr_args = ext.oext_args;
     ocstr_return_type = ext.oext_ret_type;
+    ocstr_rebind = ext.oext_rebind;
   }
 
 let split_anon_functor_arguments params =
@@ -777,6 +778,7 @@ and print_out_constr ppf constr =
     ocstr_name = name;
     ocstr_args = tyl;
     ocstr_return_type = return_type;
+    ocstr_rebind = rebind;
   } = constr in
   let name =
     match name with
@@ -787,7 +789,12 @@ and print_out_constr ppf constr =
   | None ->
       begin match tyl with
       | [] ->
-          pp_print_string ppf name
+          begin match rebind with
+          | None ->
+              pp_print_string ppf name
+          | Some rname ->
+              fprintf ppf "@[<2>%s = %s@]" name rname
+          end
       | _ ->
           fprintf ppf "@[<2>%s of@ %a@]" name
             (print_typlist print_simple_out_type " *") tyl
