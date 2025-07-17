@@ -492,7 +492,7 @@ module Analyser =
       | Types.Type_record (l, _) ->
           Odoc_type.Type_record (List.map (get_field env name_comment_list) l)
 
-      | Types.Type_open ->
+      | Types.Type_open _ ->
           Odoc_type.Type_open
 
       | Types.Type_external name ->

@@ -567,7 +567,7 @@ and ('lbl, 'cstr) type_kind =
     Type_abstract of type_origin
   | Type_record of 'lbl list  * record_representation
   | Type_variant of 'cstr list * variant_representation
-  | Type_open
+  | Type_open of bool     (* true if type was declared with [@strict] *)
   | Type_external of string
 
 and type_origin =

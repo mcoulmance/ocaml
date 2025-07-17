@@ -108,7 +108,7 @@ let classify env ty : classification =
           match (Env.find_type p env).type_kind with
           | Type_abstract _ | Type_external _ ->
               Any
-          | Type_record _ | Type_variant _ | Type_open ->
+          | Type_record _ | Type_variant _ | Type_open _ ->
               Addr
         with Not_found ->
           (* This can happen due to e.g. missing -I options,

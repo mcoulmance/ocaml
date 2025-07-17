@@ -405,7 +405,7 @@ let extract_concrete_variant env ty =
   match extract_concrete_typedecl_protected env ty with
   | Typedecl(p0, p, {type_kind=Type_variant (cstrs, _)}) ->
     Variant_type (p0, p, cstrs)
-  | Typedecl(p0, p, {type_kind=Type_open}) ->
+  | Typedecl(p0, p, {type_kind=Type_open _}) ->
     Variant_type (p0, p, [])
   | Has_no_typedecl | Typedecl(_, _, _) -> Not_a_variant_type
   | May_have_typedecl -> Maybe_a_variant_type
@@ -1664,12 +1664,13 @@ module Constructor = NameChoice (struct
   let kind = Datatype_kind.Variant
   let get_name cstr = cstr.cstr_name
   let get_type cstr = cstr.cstr_res
+(* CHECKPOINT *)
   let lookup_all_from_type loc usage path env =
     match Env.lookup_all_constructors_from_type ~loc usage path env with
     | _ :: _ as x -> x
     | [] ->
         match (Env.find_type path env).type_kind with
-        | Type_open ->
+        | Type_open _ ->
             (* Extension constructors cannot be found by looking at the type
                declaration.
                We scan the whole environment to get an accurate spellchecking

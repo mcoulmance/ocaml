@@ -455,7 +455,7 @@ let in_pervasives p =
 
 let is_datatype decl=
   match decl.type_kind with
-    Type_record _ | Type_variant _ | Type_open | Type_external _ -> true
+    Type_record _ | Type_variant _ | Type_open _ | Type_external _ -> true
   | Type_abstract _ -> false
 
 
@@ -684,7 +684,7 @@ let closed_type_decl decl =
           v
     | Type_record(r, _rep) ->
         List.iter (fun l -> closed_type mark l.ld_type) r
-    | Type_open -> ()
+    | Type_open _ -> ()
     | Type_external _ -> ()
     end;
     begin match decl.type_manifest with
@@ -1364,7 +1364,7 @@ let instance_parameterized_type ?keep_names ?scope sch_args sch =
 
 let map_kind f = function
   | Type_abstract r -> Type_abstract r
-  | Type_open -> Type_open
+  | Type_open s -> Type_open s
   | Type_variant (cl, rep) ->
       Type_variant (
         List.map
@@ -2524,7 +2524,8 @@ and mcomp_type_decl type_pairs env p1 p2 tl1 tl2 =
       | Type_variant (v1,r), Type_variant (v2,r') when r = r' ->
           mcomp_list type_pairs env tl1 tl2;
           mcomp_variant_description type_pairs env v1 v2
-      | Type_open, Type_open ->
+(* CHECKPOINT *)
+      | Type_open _, Type_open _ ->
           mcomp_list type_pairs env tl1 tl2
             (* thus, exn and eff are incompatible *)
       | Type_external n1, Type_external n2 when n1 = n2 ->

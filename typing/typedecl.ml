@@ -470,7 +470,12 @@ let transl_declaration env sdecl (id, uid) =
               Record_regular
           in
           Ttype_record lbls, Type_record(lbls', rep)
-      | Ptype_open -> Ttype_open, Type_open
+      | Ptype_open ->
+          let is_strict =
+            Option.is_some @@
+            List.find_opt (fun { Parsetree.attr_name; _ } -> attr_name.txt = "strict") sdecl.ptype_attributes
+          in
+          Ttype_open, Type_open is_strict
       in
   begin
     let (tman, man) = match sdecl.ptype_manifest with
@@ -632,7 +637,7 @@ let check_constraints env sdecl (_, decl) =
       in
       let pl = find_pl sdecl.ptype_kind in
       check_constraints_labels env visited l pl
-  | Type_open -> ()
+  | Type_open _ -> () (* CHECKPOINT *)
   | Type_external _ -> ()
   end;
   begin match decl.type_manifest with
@@ -651,7 +656,7 @@ let check_constraints env sdecl (_, decl) =
 *)
 let check_coherence env loc dpath decl =
   match decl with
-    { type_kind = (Type_variant _ | Type_record _| Type_open);
+    { type_kind = (Type_variant _ | Type_record _| Type_open _);
       type_manifest = Some ty } ->
       begin match get_desc ty with
         Tconstr(path, args, _) ->
@@ -1398,6 +1403,7 @@ let is_rebind ext =
   | Text_rebind _ -> true
   | Text_decl _ -> false
 
+(* CHECKPOINT *)
 let transl_type_extension extend env loc styext =
   let type_path, type_decl =
     let lid = styext.ptyext_path in
@@ -1405,7 +1411,7 @@ let transl_type_extension extend env loc styext =
   in
   begin
     match type_decl.type_kind with
-    | Type_open -> begin
+    | Type_open _ -> begin
         match type_decl.type_private with
         | Private when extend -> begin
             match

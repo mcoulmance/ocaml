@@ -149,7 +149,7 @@ let of_kind = function
   | Type_abstract _ -> Kind_abstract
   | Type_record (_, _) -> Kind_record
   | Type_variant (_, _) -> Kind_variant
-  | Type_open -> Kind_open
+  | Type_open  _-> Kind_open
   | Type_external name -> Kind_external name
 
 type kind_mismatch = type_kind * type_kind
@@ -777,7 +777,7 @@ let privacy_mismatch env decl1 decl2 =
       match decl1.type_kind, decl2.type_kind with
       | Type_record  _, Type_record  _ -> Some Private_record_type
       | Type_variant _, Type_variant _ -> Some Private_variant_type
-      | Type_open,      Type_open      -> Some Private_extensible_variant
+      | Type_open _,    Type_open _    -> Some Private_extensible_variant
       | Type_abstract _, Type_abstract _
         when Option.is_some decl2.type_manifest -> begin
           match decl1.type_manifest with
@@ -1020,7 +1020,7 @@ let type_declarations ?(equality = false) ~loc env ~mark name
           decl1.type_params decl2.type_params
           labels1 labels2
           rep1 rep2
-    | (Type_open, Type_open) -> None
+    | (Type_open _, Type_open _) -> None (* TODO *)
     | (Type_external n1, Type_external n2) when n1 = n2 -> None
     | (_, _) -> Some (Kind (of_kind decl1.type_kind, of_kind decl2.type_kind))
   in
@@ -1039,11 +1039,12 @@ let type_declarations ?(equality = false) ~loc env ~mark name
       | Error violation -> Some (Immediate violation)
   in
   if err <> None then err else
+  let is_open = function Type_open _ -> true | _ -> false in
   let need_variance =
-    abstr || decl1.type_private = Private || decl1.type_kind = Type_open in
+    abstr || decl1.type_private = Private || (is_open decl1.type_kind) in
   if not need_variance then None else
   let abstr = abstr || decl2.type_private = Private in
-  let opn = decl2.type_kind = Type_open && decl2.type_manifest = None in
+  let opn = (is_open decl2.type_kind) && decl2.type_manifest = None in
   let constrained ty = not (Btype.is_Tvar ty) in
   if List.for_all2
       (fun ty (v1,v2) ->

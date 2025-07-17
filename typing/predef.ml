@@ -330,9 +330,9 @@ let decl_of_type_constr tconstr =
   | `Unit ->
       let kind = variant [cstr ident_void []] in
       decl0 ~immediate:Always ~kind ()
-  | `Exn -> decl0 ~kind:Type_open ()
+  | `Exn -> decl0 ~kind:(Type_open false) ()
   | `Eff ->
-      let kind _ = Type_open in
+      let kind _ = Type_open false in
       decl1 ~variance:Variance.full ~kind ()
   | `Continuation ->
       let variance = Variance.(contravariant, covariant) in
