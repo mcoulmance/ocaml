@@ -814,7 +814,8 @@ let should_extend ext env = match ext with
       | Construct {cstr_tag=(Cstr_constant _|Cstr_block _|Cstr_unboxed)} ->
           let path = get_constructor_type_path p.pat_type p.pat_env in
           Path.same path ext
-      | Construct {cstr_tag=(Cstr_extension _)} -> false
+      | Construct {cstr_tag=(Cstr_extension _)}
+      | Construct {cstr_tag=(Cstr_rebind _)} -> false
       | Constant _ | Tuple _ | Variant _ | Record _ | Array _ | Lazy -> false
       | Any -> assert false
       end
@@ -897,7 +898,7 @@ let complete_constrs constr used_constrs =
 let build_other_constrs env p =
   let open Patterns.Head in
   match p.pat_desc with
-  | Construct ({ cstr_tag = Cstr_extension _ }) -> extra_pat
+  | Construct ({ cstr_tag = Cstr_extension _ }) | Construct ({ cstr_tag = Cstr_rebind _ }) -> extra_pat
   | Construct
       ({ cstr_tag = Cstr_constant _ | Cstr_block _ | Cstr_unboxed } as c) ->
         let constr = { p with pat_desc = c } in
@@ -932,7 +933,7 @@ let build_other ext env =
   | (d, _) :: _ ->
       let open Patterns.Head in
       match d.pat_desc with
-      | Construct { cstr_tag = Cstr_extension _ } ->
+      | Construct { cstr_tag = Cstr_extension _ } | Construct { cstr_tag = Cstr_rebind _ }->
           (* let c = {c with cstr_name = "*extension*"} in *) (* PR#7330 *)
           make_pat
             (Tpat_var (Ident.create_local "*extension*",
@@ -1964,7 +1965,7 @@ let rec collect_paths_from_pat r p = match p.pat_desc with
 | Tpat_any|Tpat_var _|Tpat_constant _| Tpat_variant (_,None,_) -> r
 | Tpat_tuple ps ->
     List.fold_left (fun r (_, p) -> collect_paths_from_pat r p) r ps
-| Tpat_array (_, ps) | Tpat_construct (_, {cstr_tag=Cstr_extension _}, ps, _)->
+| Tpat_array (_, ps) | Tpat_construct (_, {cstr_tag=Cstr_extension _}, ps, _) | Tpat_construct (_, {cstr_tag=Cstr_rebind _}, ps, _) ->
     List.fold_left collect_paths_from_pat r ps
 | Tpat_record (lps,_) ->
     List.fold_left

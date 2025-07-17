@@ -37,11 +37,14 @@ type constructor_description =
    }
 
 and constructor_tag =
-    Cstr_constant of int                (* Constant constructor (an int) *)
-  | Cstr_block of int                   (* Regular constructor (a block) *)
-  | Cstr_unboxed                        (* Constructor of an unboxed type *)
-  | Cstr_extension of Path.t * bool     (* Extension constructor
-                                           true if a constant false if a block*)
+    Cstr_constant of int                      (* Constant constructor (an int) *)
+  | Cstr_block of int                         (* Regular constructor (a block) *)
+  | Cstr_unboxed                              (* Constructor of an unboxed type *)
+  | Cstr_extension of Path.t * bool * bool    (* Extension constructor
+                                                 true if a constant false if a block
+                                                 true if the corresponding open type has been
+                                                 declared with [optopen] *)
+  | Cstr_rebind of Path.t * Path.t * bool
 
 (* Constructors are the same: they return (structurally)-equal values
    when applied to equal arguments. *)

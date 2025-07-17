@@ -4819,7 +4819,8 @@ and type_expect_
               Env.lookup_constructor Env.Positive ~loc:lid.loc lid.txt env
             in
             match cd.cstr_tag with
-            | Cstr_extension (path, _) -> path
+            | Cstr_extension (path, _, _)
+            | Cstr_rebind (_, path, _) -> path
             | _ -> raise (Error (lid.loc, env, Not_an_extension_constructor))
           in
           rue {
@@ -5958,7 +5959,7 @@ and type_construct env ~sexp lid sarg ty_expected_explained =
       (List.combine ty_args ty_args0) in
   if constr.cstr_private = Private then
     begin match constr.cstr_tag with
-    | Cstr_extension _ ->
+    | Cstr_extension _  | Cstr_rebind _ ->
         raise(Error(sexp.pexp_loc, env, Private_constructor (constr, ty_res)))
     | Cstr_constant _ | Cstr_block _ | Cstr_unboxed ->
         raise (Error(sexp.pexp_loc, env, Private_type ty_res));

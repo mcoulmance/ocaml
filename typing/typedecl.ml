@@ -1340,7 +1340,7 @@ let transl_extension_constructor ~scope env type_path type_params
         end;
         let path =
           match cdescr.cstr_tag with
-            Cstr_extension(path, _) -> path
+            Cstr_extension(path, _, _) | Cstr_rebind (_, path, _) -> path
           | _ -> assert false
         in
         let args =

@@ -20,7 +20,7 @@ open Types
 open Data_types
 
 val extension_descr:
-  current_unit:(Unit_info.t option) -> Path.t -> extension_constructor ->
+  current_unit:(Unit_info.t option) -> is_opt:bool -> rebind:Path.t option -> Path.t -> extension_constructor ->
   constructor_description
 
 val labels_of_type:

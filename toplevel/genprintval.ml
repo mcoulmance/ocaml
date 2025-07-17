@@ -633,7 +633,7 @@ module Make(O : OBJ)(EVP : EVALPATH with type valu = O.t) = struct
         let cstr = Env.find_constructor_by_name lid env in
         let path =
           match cstr.cstr_tag with
-            Cstr_extension(p, _) -> p
+            Cstr_extension(p, _, _) | Cstr_rebind(_, p, _) -> p
             | _ -> raise Not_found
         in
         let addr = Env.find_constructor_address path env in

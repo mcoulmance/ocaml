@@ -739,12 +739,12 @@ let has_local_constraints env =
 
 let is_ext cda =
   match cda.cda_description with
-  | {cstr_tag = Cstr_extension _} -> true
+  | {cstr_tag = Cstr_extension _} | {cstr_tag = Cstr_rebind _} -> true
   | _ -> false
 
 let is_local_ext cda =
   match cda.cda_description with
-  | {cstr_tag = Cstr_extension(p, _)} -> begin
+  | {cstr_tag = Cstr_extension(p, _, _)} | {cstr_tag = Cstr_rebind(_, p, _)} -> begin
       match p with
       | Pident _ -> true
       | Pdot _ | Papply _ | Pextra_ty _ -> false
@@ -1793,7 +1793,7 @@ let rec components_of_module_maker
         | SigL_typext(id, ext, _, _) ->
             let ext' = Subst.extension_constructor sub ext in
             let descr =
-              Datarepr.extension_descr ~current_unit:(get_current_unit ()) path
+              Datarepr.extension_descr ~current_unit:(get_current_unit ()) ~is_opt:ext'.ext_opt ~rebind:ext'.ext_rebind path
                 ext'
             in
             let addr = next_address () in
@@ -2062,7 +2062,7 @@ and store_extension ~check ~rebind id addr ext shape env =
   let loc = ext.ext_loc in
   let cstr =
     Datarepr.extension_descr
-      ~current_unit:(get_current_unit ()) (Pident id) ext
+      ~current_unit:(get_current_unit ()) ~is_opt:ext.ext_opt ~rebind:ext.ext_rebind (Pident id) ext
   in
   let cda =
     { cda_description = cstr;

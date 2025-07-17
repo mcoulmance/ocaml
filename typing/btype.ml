@@ -218,6 +218,14 @@ let hash_variant s =
   (* make it signed for 64 bits architectures *)
   if !accu > 0x3FFFFFFF then !accu - (1 lsl 31) else !accu
 
+let hash_ext p =
+  let name =
+    match String.rindex_opt p '.' with
+    | Some i -> String.sub p (i+1) (String.length p - i - 1)
+    | None -> p
+  in
+  hash_variant name
+
 let proxy ty =
   match get_desc ty with
   | Tvariant row when not (static_row row) ->

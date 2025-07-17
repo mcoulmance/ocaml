@@ -322,7 +322,7 @@ let is_exception_constructor env type_expr =
   Ctype.is_equal env true [type_expr] [Predef.type_exn]
 
 let is_extension_constructor = function
-  | Cstr_extension _ -> true
+  | Cstr_extension _  | Cstr_rebind _ -> true
   | _ -> false
 
 let () =

@@ -70,7 +70,8 @@ let transl_extension_constructor ~scopes env path ext =
     Text_decl _ ->
       Lprim (Pmakeblock (Obj.object_tag, Immutable, None),
         [Lconst (Const_base (Const_string (name, ext.ext_loc, None)));
-         Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc)],
+         Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc);
+         Lconst (Const_base (Const_int (Btype.hash_ext (Ident.name ext.ext_id))))],
         loc)
   | Text_rebind(path, _lid) ->
       transl_extension_path loc env path
@@ -308,7 +309,8 @@ and transl_exp0 ~in_new_scope ~scopes e =
             Lprim(Pmakeblock(n, Immutable, Some shape), ll,
                   of_location ~scopes e.exp_loc)
           end
-      | Cstr_extension(path, is_const) ->
+      | Cstr_extension(path, is_const, _)
+      | Cstr_rebind(_, path, is_const) ->
           let lam = transl_extension_path
                       (of_location ~scopes e.exp_loc) e.exp_env path in
           if is_const then lam

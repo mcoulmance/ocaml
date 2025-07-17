@@ -1400,8 +1400,8 @@ let can_group discr pat =
   | Constant (Const_int64 _), Constant (Const_int64 _)
   | Constant (Const_nativeint _), Constant (Const_nativeint _) ->
       true
-  | Construct { cstr_tag = Cstr_extension (p1, _) },
-    Construct { cstr_tag = Cstr_extension (p2, _) }
+  | Construct { cstr_tag = Cstr_extension (p1, _, false) },
+    Construct { cstr_tag = Cstr_extension (p2, _, false) }
     ->
       (* Extension constructors with distinct names may be equal thanks to
          constructor rebinding. So we need to produce a specialized
@@ -1673,7 +1673,7 @@ and split_no_or cls args def k =
           ((idef, next) :: nexts)
   and should_split group_discr =
     match group_discr.pat_desc with
-    | Patterns.Head.Construct { cstr_tag = Cstr_extension _ } ->
+    | Patterns.Head.(Construct { cstr_tag = Cstr_extension _ } | Construct { cstr_tag = Cstr_rebind _ })->
         (* it is unlikely that we will raise anything, so we split now *)
         true
     | _ -> false
@@ -2058,7 +2058,7 @@ let get_expr_args_constr ~scopes head { arg; mut; _ } rem =
     | Cstr_block _ ->
         make_field_accesses Alias 0 (cstr.cstr_arity - 1) rem
     | Cstr_unboxed -> { arg; binding_kind = Alias; mut } :: rem
-    | Cstr_extension _ -> make_field_accesses Alias 1 cstr.cstr_arity rem
+    | Cstr_extension _ | Cstr_rebind _-> make_field_accesses Alias 1 cstr.cstr_arity rem
 
 let divide_constructor ~scopes ctx pm =
   divide
@@ -3164,7 +3164,7 @@ let split_cases tag_lambda_list =
         | Cstr_constant n -> ((n, act) :: consts, nonconsts)
         | Cstr_block n -> (consts, (n, act) :: nonconsts)
         | Cstr_unboxed -> (consts, (0, act) :: nonconsts)
-        | Cstr_extension _ -> assert false
+        | Cstr_extension _ | Cstr_rebind _ -> assert false
       )
   in
   let const, nonconst = split_rec tag_lambda_list in
@@ -3176,12 +3176,73 @@ let split_extension_cases tag_lambda_list =
     | (cstr_tag, act) :: rem -> (
         let consts, nonconsts = split_rec rem in
         match cstr_tag with
-        | Cstr_extension (path, true) -> ((path, act) :: consts, nonconsts)
-        | Cstr_extension (path, false) -> (consts, (path, act) :: nonconsts)
+        | Cstr_extension (path, true, _) | Cstr_rebind (_, path, true)
+            -> ((path, act) :: consts, nonconsts)
+        | Cstr_extension (path, false, _) | Cstr_rebind (_, path, false)
+            -> (consts, (path, act) :: nonconsts)
         | _ -> assert false
       )
   in
   split_rec tag_lambda_list
+
+let split_extension_cases_opt descr_lambda_list =
+  let rec split_rec = function
+    | [] -> ([], [])
+    | (cstr, act) :: rem -> (
+        let consts, nonconsts = split_rec rem in
+        match cstr.cstr_tag with
+        | Cstr_extension (path, true, _) | Cstr_rebind (_, path, true)
+            -> ((path, Btype.hash_ext (Path.name path), act) :: consts, nonconsts)
+        | Cstr_extension (path, false, _) | Cstr_rebind (_, path, false)
+            -> (consts, (path, Btype.hash_ext (Path.name path), act) :: nonconsts)
+        | _ -> assert false
+    )
+  in
+  split_rec descr_lambda_list
+
+let merge_extension_cases_hash consts =
+  let table = Hashtbl.create 17 in
+  (List.iter
+    (fun (path, hash, act) ->
+        let pats =
+          match Hashtbl.find_opt table hash with
+            | Some l -> l
+            | None -> []
+        in
+      Hashtbl.replace table hash ((path, act) :: pats))
+  consts);
+  Hashtbl.fold (fun keys vals acc -> (keys, List.rev vals) :: acc) table []
+
+let merge_extension_cases arg consts nonconsts fail pat_env loc =
+  let default, consts, nonconsts =
+    match fail with
+    | None -> (
+        match (consts, nonconsts) with
+        | _, (_, _, act) :: rem -> (act, consts, rem)
+        | (_, _, act) :: rem, _ -> (act, rem, nonconsts)
+        | _ -> assert false
+      )
+    | Some fail -> (fail, consts, nonconsts)
+  in
+  let merge arg pats =
+    let pats = merge_extension_cases_hash pats in
+    List.map
+      (fun (hash, consts) ->
+        let lam =
+          List.fold_right
+            (fun (path, act) rem ->
+              let ext = transl_extension_path loc pat_env path in
+              Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
+            consts default
+        in
+        (hash, lam))
+      pats
+  in
+  let tag = Ident.create_local "tag" in
+  let consts = merge arg consts in
+  let nonconsts = merge (Lvar tag) nonconsts in
+
+  (tag, consts, nonconsts)
 
 let transl_match_on_option arg loc ~if_some ~if_none =
   (* Keeping the Pisint test would make the bytecode
@@ -3191,6 +3252,28 @@ let transl_match_on_option arg loc ~if_some ~if_none =
     Lifthenelse(Lprim (Pisint, [ arg ], loc), if_none, if_some)
   else
     Lifthenelse(arg, if_some, if_none)
+
+let make_test_sequence_constant fail arg int_lambda_list =
+  let _, (cases, actions) = as_interval fail int_lambda_list in
+  Switcher.test_sequence arg cases actions
+
+let call_switcher_constant loc fail arg int_lambda_list =
+  call_switcher loc fail arg int_lambda_list
+
+let call_switcher_variant_constr loc fail arg int_lambda_list =
+  let v = Ident.create_local "variant" in
+  Llet
+    ( Alias,
+      Pgenval,
+      v,
+      Lprim (Pfield (0, Pointer, Immutable), [ arg ], loc),
+      call_switcher loc fail (Lvar v) int_lambda_list )
+
+let call_switcher_ext_constr loc fail arg int_lambda_list =
+  call_switcher loc fail arg int_lambda_list
+
+let get_field offset immediate arg loc =
+  Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc)
 
 let combine_extension_constructor loc arg pat_env partial ctx def
     (descr_lambda_list, total1, _pats) =
@@ -3230,6 +3313,57 @@ let combine_extension_constructor loc arg pat_env partial ctx def
         let ext = transl_extension_path loc pat_env path in
         Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
       consts nonconst_lambda
+  in
+  (lambda1, Jumps.union local_jumps total1)
+
+let combine_extension_constructor_opt loc arg pat_env partial ctx def
+    (descr_lambda_list, total1, _pats) =
+(*  let test_int_or_block arg if_int if_block =
+    Lifthenelse (Lprim (Pisint, [ arg ], loc), if_int, if_block)
+  in *)
+  (* Is this the best way to perform this check ?
+     The test_int_or_block from combine_variant seems to be
+     better but we would need to change the layout of our blocks
+     to make it work here :( *)
+  let test_int_or_block arg if_int if_block =
+    Lswitch ( arg, { sw_numconsts = 0; sw_consts = []; sw_numblocks = 256;
+                     sw_blocks = [ (0, if_block); (Obj.object_tag, if_int) ];
+                     sw_failaction = None; }, loc)
+  in
+  let fail, local_jumps = mk_failaction_neg partial ctx def in
+  let consts, nonconsts = split_extension_cases_opt descr_lambda_list in
+  let tag, consts, nonconsts =
+    merge_extension_cases arg consts nonconsts fail pat_env loc
+  in
+  let lambda1 =
+    let arg0 = get_field 0 Pointer arg loc in
+    let arg_const_id = get_field 2 Immediate arg loc in
+    let arg_nonconst_id = get_field 2 Immediate (get_field 0 Pointer arg loc) loc in
+    match (consts, nonconsts) with
+    | [ (_, act1) ], [ (_, act2) ] when fail = None ->
+        test_int_or_block arg act1 act2
+    | _, [] -> (
+        let lam =
+          make_test_sequence_constant fail arg_const_id consts in
+        match fail with
+        | None -> lam
+        | Some fail -> test_int_or_block arg lam fail
+      )
+    | [], _ -> (
+        let lam = call_switcher_ext_constr loc fail arg_nonconst_id nonconsts in
+        let lam = Llet (Alias, Pgenval, tag, arg0, lam) in
+        match fail with
+        | None -> lam
+        | Some fail -> test_int_or_block arg fail lam
+      )
+    | _, _ ->
+        let lam_const = call_switcher_constant loc fail arg_const_id consts
+        and lam_nonconsts =
+          Llet (Alias, Pgenval, tag, arg0,
+          call_switcher_ext_constr loc fail arg_nonconst_id nonconsts)
+        in
+        test_int_or_block arg lam_const lam_nonconsts
+
   in
   (lambda1, Jumps.union local_jumps total1)
 
@@ -3346,26 +3480,12 @@ let combine_regular_constructor loc arg cstr partial ctx def
 
 let combine_constructor loc arg pat_env cstr partial ctx def actions =
   match cstr.cstr_tag with
+  | Cstr_extension (_, _, true) | Cstr_rebind _ ->
+      combine_extension_constructor_opt loc arg pat_env partial ctx def actions
   | Cstr_extension _ ->
-    combine_extension_constructor loc arg pat_env partial ctx def actions
+      combine_extension_constructor loc arg pat_env partial ctx def actions
   | _ ->
-    combine_regular_constructor loc arg cstr partial ctx def actions
-
-let make_test_sequence_variant_constant fail arg int_lambda_list =
-  let _, (cases, actions) = as_interval fail int_lambda_list in
-  Switcher.test_sequence arg cases actions
-
-let call_switcher_variant_constant loc fail arg int_lambda_list =
-  call_switcher loc fail arg int_lambda_list
-
-let call_switcher_variant_constr loc fail arg int_lambda_list =
-  let v = Ident.create_local "variant" in
-  Llet
-    ( Alias,
-      Pgenval,
-      v,
-      Lprim (Pfield (0, Pointer, Immutable), [ arg ], loc),
-      call_switcher loc fail (Lvar v) int_lambda_list )
+      combine_regular_constructor loc arg cstr partial ctx def actions
 
 let combine_variant loc row arg partial ctx def (tag_lambda_list, total1, _pats)
     =
@@ -3407,7 +3527,7 @@ let combine_variant loc row arg partial ctx def (tag_lambda_list, total1, _pats)
         | [ (_, act1) ], [ (_, act2) ] when fail = None ->
             test_int_or_block arg act1 act2
         | _, [] -> (
-            let lam = make_test_sequence_variant_constant fail arg consts in
+            let lam = make_test_sequence_constant fail arg consts in
             (* PR#11587: Switcher.test_sequence expects integer inputs, so
                if the type allows pointers we must filter them away. *)
             match fail with
@@ -3422,7 +3542,7 @@ let combine_variant loc row arg partial ctx def (tag_lambda_list, total1, _pats)
             | Some fail -> test_int_or_block arg fail lam
           )
         | _, _ ->
-            let lam_const = call_switcher_variant_constant loc fail arg consts
+            let lam_const = call_switcher_constant loc fail arg consts
             and lam_nonconst =
               call_switcher_variant_constr loc fail arg nonconsts
             in

@@ -98,6 +98,7 @@ sig
   val of_val : 'a -> t
   val name : t -> string
   val id : t -> int
+  val hash : t -> int
 end
 
 module Ephemeron: sig

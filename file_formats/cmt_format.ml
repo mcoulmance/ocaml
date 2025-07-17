@@ -158,7 +158,8 @@ let iter_on_occurrences
   in
   let add_constructor_description env lid =
     function
-    | { Data_types.cstr_tag = Cstr_extension (path, _); _ } ->
+    | { Data_types.cstr_tag = Cstr_extension (path, _, _); _ }
+    | { Data_types.cstr_tag = Cstr_rebind (_, path, _); } ->
         f ~namespace:Extension_constructor env path lid
     | { Data_types.cstr_uid = Predef name; _} ->
         let id = List.assoc name Predef.builtin_idents in

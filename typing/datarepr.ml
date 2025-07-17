@@ -153,7 +153,7 @@ let constructor_descrs ~current_unit ty_path decl cstrs rep =
         (cd_id, cstr) :: descr_rem in
   describe_constructors 0 0 cstrs
 
-let extension_descr ~current_unit path_ext ext =
+let extension_descr ~current_unit ~is_opt ~rebind path_ext ext =
   let ty_res =
     match ext.ext_ret_type with
         Some type_ret -> type_ret
@@ -163,12 +163,20 @@ let extension_descr ~current_unit path_ext ext =
     constructor_args ~current_unit ext.ext_private ext.ext_args ext.ext_ret_type
       Path.(Pextra_ty (path_ext, Pext_ty)) (Record_extension path_ext)
   in
+  let tag =
+    let const = cstr_args = [] in
+    match rebind with
+      | Some path ->
+          Cstr_rebind (path_ext, path, const)
+      | None ->
+          Cstr_extension (path_ext, const, is_opt)
+  in
     { cstr_name = Path.last path_ext;
       cstr_res = ty_res;
       cstr_existentials = existentials;
       cstr_args;
       cstr_arity = List.length cstr_args;
-      cstr_tag = Cstr_extension(path_ext, cstr_args = []);
+      cstr_tag = tag;
       cstr_consts = -1;
       cstr_nonconsts = -1;
       cstr_private = ext.ext_private;

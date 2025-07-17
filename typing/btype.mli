@@ -115,6 +115,8 @@ val static_row: row_desc -> bool
         (* Return whether the row is static or not *)
 val hash_variant: label -> int
         (* Hash function for variant tags *)
+val hash_ext : label -> int
+        (* Hash function for extension constructor tags *)
 
 val proxy: type_expr -> type_expr
         (* Return the proxy representative of the type: either itself

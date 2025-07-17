@@ -675,14 +675,15 @@ let rec expression : Typedtree.expression -> term_judg =
     | Texp_construct (_, desc, exprs) ->
       let access_constructor =
         match desc.cstr_tag with
-        | Cstr_extension (pth, _) ->
+        | Cstr_extension (pth, _, _)
+        | Cstr_rebind (_, pth, _) ->
           path pth << Dereference
         | _ -> empty
       in
       let m' = match desc.cstr_tag with
         | Cstr_unboxed ->
           Return
-        | Cstr_constant _ | Cstr_block _ | Cstr_extension _ ->
+        | Cstr_constant _ | Cstr_block _ | Cstr_extension _ | Cstr_rebind _ ->
           Guard
       in
       join [

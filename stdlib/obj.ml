@@ -89,6 +89,9 @@ struct
 
   let [@inline always] id (slot : t) =
     (obj (field (repr slot) 1) : int)
+
+  let [@inline always] hash (slot : t) =
+    (obj (field (repr slot) 2) : int)
 end
 
 module Ephemeron = struct
