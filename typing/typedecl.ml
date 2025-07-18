@@ -62,6 +62,7 @@ type error =
       Longident.t * Env.t * Errortrace.unification_error
   | Rebind_mismatch of Longident.t * Path.t * Path.t
   | Rebind_private of Longident.t
+  | Rebind_strict of Path.t
   | Variance of Typedecl_variance.error
   | Unavailable_type_constructor of Path.t
   | Unbound_type_var_ext of type_expr * extension_constructor
@@ -637,7 +638,7 @@ let check_constraints env sdecl (_, decl) =
       in
       let pl = find_pl sdecl.ptype_kind in
       check_constraints_labels env visited l pl
-  | Type_open _ -> () (* CHECKPOINT *)
+  | Type_open _ -> ()
   | Type_external _ -> ()
   end;
   begin match decl.type_manifest with
@@ -1269,6 +1270,13 @@ let transl_type_decl env rec_flag sdecl_list =
 
 (* Translating type extensions *)
 
+let is_invalid_rebind env type_path =
+  let ty = Env.find_type type_path env in
+  Option.is_some @@
+  List.find_opt
+    (fun { attr_name; _ } -> attr_name.txt = "strict")
+    ty.type_attributes
+
 let transl_extension_constructor ~scope env type_path type_params
                                  typext_params priv sext =
   let id = Ident.create_scoped ~scope sext.pext_name.txt in
@@ -1281,6 +1289,8 @@ let transl_extension_constructor ~scope env type_path type_params
         in
           args, ret_type, Text_decl(svars, targs, tret_type)
     | Pext_rebind lid ->
+        if is_invalid_rebind env type_path then
+          raise (Error (lid.loc, Rebind_strict type_path));
         let usage : Env.constructor_usage =
           if priv = Public then Env.Exported else Env.Exported_private
         in
@@ -1403,7 +1413,6 @@ let is_rebind ext =
   | Text_rebind _ -> true
   | Text_decl _ -> false
 
-(* CHECKPOINT *)
 let transl_type_extension extend env loc styext =
   let type_path, type_decl =
     let lid = styext.ptyext_path in
@@ -2249,6 +2258,12 @@ let report_error ~loc = function
   | Rebind_private lid ->
       Location.errorf ~loc "The constructor@ %a@ is private"
         quoted_constr lid
+  | Rebind_strict p ->
+      Location.errorf ~loc
+        "The type@ %a@ is a strict open type. This means that constructor \
+         rebinding is forbidden when extending it."
+        Style.inline_code (Path.name p)
+
   | Variance (Typedecl_variance.Bad_variance (n, v1, v2)) ->
       variance_error ~loc ~v1 ~v2 n
   | Unavailable_type_constructor p ->

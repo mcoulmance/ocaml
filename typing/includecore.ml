@@ -205,6 +205,7 @@ type type_mismatch =
   | Private_variant of type_expr * type_expr * private_variant_mismatch
   | Private_object of type_expr * type_expr * private_object_mismatch
   | Variance
+  | Strict_mismatch
   | Record_mismatch of record_mismatch
   | Variant_mismatch of variant_change list
   | Unboxed_representation of position
@@ -462,6 +463,8 @@ let report_type_mismatch first second decl env ppf err =
       report_private_object_mismatch env ppf mismatch
   | Variance ->
       pr "Their variances do not agree."
+  | Strict_mismatch ->
+      pr "[@strict] must be specified on both"
   | Record_mismatch err ->
       report_record_mismatch first second decl env ppf err
   | Variant_mismatch err ->
@@ -1020,7 +1023,9 @@ let type_declarations ?(equality = false) ~loc env ~mark name
           decl1.type_params decl2.type_params
           labels1 labels2
           rep1 rep2
-    | (Type_open _, Type_open _) -> None (* TODO *)
+    | (Type_open s1, Type_open s2) when s1 <> s2 ->
+        Some Strict_mismatch
+    | (Type_open _, Type_open _) -> None
     | (Type_external n1, Type_external n2) when n1 = n2 -> None
     | (_, _) -> Some (Kind (of_kind decl1.type_kind, of_kind decl2.type_kind))
   in

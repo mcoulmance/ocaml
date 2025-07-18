@@ -141,7 +141,8 @@ and out_type_decl =
     otype_private: Asttypes.private_flag;
     otype_immediate: Type_immediacy.t;
     otype_unboxed: bool;
-    otype_cstrs: (out_type * out_type) list }
+    otype_cstrs: (out_type * out_type) list;
+    otype_strict: bool }
 and out_extension_constructor =
   { oext_name: string;
     oext_type_name: string;

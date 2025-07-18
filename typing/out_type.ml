@@ -1392,30 +1392,33 @@ let tree_of_type_decl id decl =
   in
   let (name, args) = type_defined decl in
   let constraints = tree_of_constraints params in
-  let ty, priv, unboxed =
+  let ty, priv, unboxed, strict =
     match decl.type_kind with
     | Type_abstract _ ->
         begin match ty_manifest with
-        | None -> (Otyp_abstract, Public, false)
+        | None -> (Otyp_abstract, Public, false, false)
         | Some ty ->
-            tree_of_typexp Type ty, decl.type_private, false
+            tree_of_typexp Type ty, decl.type_private, false, false
         end
     | Type_variant (cstrs, rep) ->
         tree_of_manifest
           (Otyp_sum (List.map tree_of_constructor_in_decl cstrs)),
         decl.type_private,
-        (rep = Variant_unboxed)
+        (rep = Variant_unboxed),
+        false
     | Type_record(lbls, rep) ->
         tree_of_manifest (Otyp_record (List.map tree_of_label lbls)),
         decl.type_private,
-        (match rep with Record_unboxed _ -> true | _ -> false)
-    | Type_open _ ->
+        (match rep with Record_unboxed _ -> true | _ -> false),
+        false
+    | Type_open strict ->
         tree_of_manifest Otyp_open,
         decl.type_private,
-        false
+        false,
+        strict
     | Type_external name ->
         assert (decl.type_private = Public);
-        (Otyp_external name, Public, false)
+        (Otyp_external name, Public, false, false)
   in
     { otype_name = name;
       otype_params = args;
@@ -1423,7 +1426,8 @@ let tree_of_type_decl id decl =
       otype_private = priv;
       otype_immediate = Type_immediacy.of_attributes decl.type_attributes;
       otype_unboxed = unboxed;
-      otype_cstrs = constraints }
+      otype_cstrs = constraints;
+      otype_strict = strict }
 
 let add_type_decl_to_preparation id decl =
    ignore @@ prepare_decl id decl

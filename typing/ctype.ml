@@ -2524,7 +2524,6 @@ and mcomp_type_decl type_pairs env p1 p2 tl1 tl2 =
       | Type_variant (v1,r), Type_variant (v2,r') when r = r' ->
           mcomp_list type_pairs env tl1 tl2;
           mcomp_variant_description type_pairs env v1 v2
-(* CHECKPOINT *)
       | Type_open _, Type_open _ ->
           mcomp_list type_pairs env tl1 tl2
             (* thus, exn and eff are incompatible *)

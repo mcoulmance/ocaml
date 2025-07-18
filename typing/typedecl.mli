@@ -93,6 +93,7 @@ type error =
       Longident.t * Env.t * Errortrace.unification_error
   | Rebind_mismatch of Longident.t * Path.t * Path.t
   | Rebind_private of Longident.t
+  | Rebind_strict of Path.t
   | Variance of Typedecl_variance.error
   | Unavailable_type_constructor of Path.t
   | Unbound_type_var_ext of type_expr * extension_constructor
