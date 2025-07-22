@@ -70,7 +70,8 @@ let transl_extension_constructor ~scopes env path ext =
     Text_decl _ ->
       Lprim (Pmakeblock (Obj.object_tag, Immutable, None),
         [Lconst (Const_base (Const_string (name, ext.ext_loc, None)));
-         Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc)],
+         Lprim (prim_fresh_oo_id, [Lconst (const_int 0)], loc);
+         Lconst (const_int (Btype.hash_ext (Ident.name ext.ext_id)))],
         loc)
   | Text_rebind(path, _lid) ->
       transl_extension_path loc env path

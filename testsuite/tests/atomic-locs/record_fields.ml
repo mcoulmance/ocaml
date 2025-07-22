@@ -184,7 +184,8 @@ end
 (apply (field_mut 1 (global Toploop!)) "Extension_with_inline_record/382"
   (let
     (A =
-       (makeblock 248 "Extension_with_inline_record.A" (caml_fresh_oo_id 0))
+       (makeblock 248 "Extension_with_inline_record.A" (caml_fresh_oo_id 0)
+         65)
      test =
        (function param : int
          (if (== (field_imm 0 param) A) (atomic_load param 1) 0))

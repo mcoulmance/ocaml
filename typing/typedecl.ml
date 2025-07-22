@@ -1270,9 +1270,8 @@ let transl_type_decl env rec_flag sdecl_list =
 
 (* Translating type extensions *)
 
-let is_invalid_rebind env type_path =
+let find_strict_open env type_path =
   let ty = Env.find_type type_path env in
-  Option.is_some @@
   List.find_opt
     (fun { attr_name; _ } -> attr_name.txt = "strict")
     ty.type_attributes
@@ -1280,6 +1279,8 @@ let is_invalid_rebind env type_path =
 let transl_extension_constructor ~scope env type_path type_params
                                  typext_params priv sext =
   let id = Ident.create_scoped ~scope sext.pext_name.txt in
+  let strict_arg = find_strict_open env type_path in
+  let is_strict = Option.is_some strict_arg in
   let args, ret_type, kind =
     match sext.pext_kind with
       Pext_decl(svars, sargs, sret_type) ->
@@ -1288,9 +1289,9 @@ let transl_extension_constructor ~scope env type_path type_params
             svars sargs sret_type
         in
           args, ret_type, Text_decl(svars, targs, tret_type)
+    | Pext_rebind lid when is_strict ->
+        raise (Error (lid.loc, Rebind_strict type_path))
     | Pext_rebind lid ->
-        if is_invalid_rebind env type_path then
-          raise (Error (lid.loc, Rebind_strict type_path));
         let usage : Env.constructor_usage =
           if priv = Public then Env.Exported else Env.Exported_private
         in
@@ -1374,6 +1375,11 @@ let transl_extension_constructor ~scope env type_path type_params
         in
         args, ret_type, Text_rebind(path, lid)
   in
+  let attributes =
+    match strict_arg with
+      | Some s -> s :: sext.pext_attributes
+      | None   -> sext.pext_attributes
+  in
   let ext =
     { ext_type_path = type_path;
       ext_type_params = typext_params;
@@ -1381,7 +1387,7 @@ let transl_extension_constructor ~scope env type_path type_params
       ext_ret_type = ret_type;
       ext_private = priv;
       Types.ext_loc = sext.pext_loc;
-      Types.ext_attributes = sext.pext_attributes;
+      Types.ext_attributes = attributes;
       ext_uid = Uid.mk ~current_unit:(Env.get_current_unit ());
     }
   in
@@ -1391,7 +1397,7 @@ let transl_extension_constructor ~scope env type_path type_params
       ext_type = ext;
       ext_kind = kind;
       Typedtree.ext_loc = sext.pext_loc;
-      Typedtree.ext_attributes = sext.pext_attributes; }
+      Typedtree.ext_attributes = attributes; }
   in
   let shape =
     let map =  match ext_cstrs.ext_kind with

@@ -1386,6 +1386,10 @@ let pm_free_variables { cases } =
     (fun (_, act) r -> Ident.Set.union (free_variables act) r)
     cases Ident.Set.empty
 
+let is_strict cstr =
+  Option.is_some @@
+  List.find_opt (fun { Parsetree.attr_name; _ } -> attr_name.txt = "strict") cstr
+
 (* Basic grouping predicates *)
 
 let can_group discr pat =
@@ -1400,7 +1404,7 @@ let can_group discr pat =
   | Constant (Const_int64 _), Constant (Const_int64 _)
   | Constant (Const_nativeint _), Constant (Const_nativeint _) ->
       true
-  | Construct { cstr_tag = Cstr_extension (p1, _) },
+  | Construct { cstr_tag = Cstr_extension (p1, _); cstr_attributes },
     Construct { cstr_tag = Cstr_extension (p2, _) }
     ->
       (* Extension constructors with distinct names may be equal thanks to
@@ -1408,7 +1412,7 @@ let can_group discr pat =
          submatrix for each syntactically-distinct constructor (with a threading
          of exits such that each submatrix falls back to the
          potentially-compatible submatrices below it).  *)
-      Path.same p1 p2
+      Path.same p1 p2 || is_strict cstr_attributes
   | Construct _, Construct _
   | Tuple _, (Tuple _ | Any)
   | Record _, (Record _ | Any)
@@ -3189,6 +3193,73 @@ let split_extension_cases tag_lambda_list =
   in
   split_rec tag_lambda_list
 
+let split_extension_cases_strict descr_lambda_list =
+  let rec split_rec = function
+    | [] -> ([], [])
+    | (cstr, act) :: rem -> (
+        let consts, nonconsts = split_rec rem in
+        match cstr.cstr_tag with
+        | Cstr_extension (path, true) ->
+            ((path, Btype.hash_ext (Path.name path), act) :: consts, nonconsts)
+        | Cstr_extension (path, false) ->
+            (consts, (path, Btype.hash_ext (Path.name path), act) :: nonconsts)
+        | _ ->
+            assert false
+      )
+  in
+  split_rec descr_lambda_list
+
+let merge_extension_cases_by_hash consts =
+  let table = Hashtbl.create 17 in
+  (List.iter
+    (fun (path, hash, act) ->
+      let pats =
+        match Hashtbl.find_opt table hash with
+          | Some l -> l
+          | None   -> []
+      in
+      Hashtbl.replace table hash ((path, act) :: pats))
+  consts);
+  Hashtbl.fold (fun keys vals acc -> (keys, List.rev vals) :: acc) table []
+
+let merge_extension_cases arg consts nonconsts fail pat_env loc =
+  let default, consts, nonconsts =
+    match fail with
+    | None -> (
+        match (consts, nonconsts) with
+        | _, (_, _, act) :: rem -> (act, consts, rem)
+        | (_, _, act) :: rem, _ -> (act, rem, nonconsts)
+        | _ -> assert false
+      )
+    | Some fail -> (fail, consts, nonconsts)
+  in
+  let merge arg pats =
+    let pats = merge_extension_cases_by_hash pats in
+    let make_test_sequence consts =
+            List.fold_right
+              (fun (path, act) rem ->
+                let ext = transl_extension_path loc pat_env path in
+                Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
+              consts default
+    in
+    List.map
+      (fun (hash, consts) ->
+        let lam =
+          match same_actions consts with
+          | Some lam ->
+              lam
+          | None ->
+              make_test_sequence consts
+        in
+        (hash, lam))
+      pats
+  in
+  let tag = Ident.create_local "tag" in
+  let consts = merge arg consts in
+  let nonconsts = merge (Lvar tag) nonconsts in
+
+  (tag, consts, nonconsts)
+
 let transl_match_on_option arg loc ~if_some ~if_none =
   (* Keeping the Pisint test would make the bytecode
      slightly worse, but it lets the native compiler generate
@@ -3197,6 +3268,9 @@ let transl_match_on_option arg loc ~if_some ~if_none =
     Lifthenelse(Lprim (Pisint, [ arg ], loc), if_none, if_some)
   else
     Lifthenelse(arg, if_some, if_none)
+
+let get_field offset immediate arg loc =
+  Lprim (Pfield (offset, immediate, Immutable), [ arg ], loc)
 
 let combine_extension_constructor loc arg pat_env partial ctx def
     (descr_lambda_list, total1, _pats) =
@@ -3236,6 +3310,53 @@ let combine_extension_constructor loc arg pat_env partial ctx def
         let ext = transl_extension_path loc pat_env path in
         Lifthenelse (Lprim (Pintcomp Ceq, [ arg; ext ], loc), act, rem))
       consts nonconst_lambda
+  in
+  (lambda1, Jumps.union local_jumps total1)
+
+let combine_extension_constructor_strict loc arg pat_env partial ctx def
+    (descr_lambda_list, total1, _pats) =
+  let test_int_or_block arg if_int if_block =
+    Lswitch ( arg, { sw_numconsts= 0; sw_consts = []; sw_numblocks = 256;
+                     sw_blocks = [ (0, if_block); (Obj.object_tag, if_int) ];
+                     sw_failaction = None; }, loc)
+  in
+  let fail, local_jumps = mk_failaction_neg partial ctx def in
+  let consts, nonconsts = split_extension_cases_strict descr_lambda_list in
+  let tag, consts, nonconsts =
+    merge_extension_cases arg consts nonconsts fail pat_env loc
+  in
+  let lambda1 =
+    let arg0 = get_field 0 Pointer arg loc in
+    let arg_const_id = get_field 2 Immediate arg loc in
+    let arg_nonconst_id = get_field 2 Immediate (get_field 0 Pointer arg loc) loc in
+    match (consts, nonconsts) with
+    | [ (_, act1) ], [ (_, act2) ] when fail = None ->
+        test_int_or_block arg act1 act2
+    | _, [] -> (
+        let lam =
+          match same_actions consts with
+            | Some lam -> lam
+            | None ->
+            call_switcher loc fail arg_const_id consts
+        in
+        match fail with
+        | None -> lam
+        | Some fail -> test_int_or_block arg lam fail
+      )
+    | [], _ -> (
+        let lam = call_switcher loc fail arg_nonconst_id nonconsts in
+        let lam = Llet (Alias, Pgenval, tag, arg0, lam) in
+        match fail with
+        | None -> lam
+        | Some fail -> test_int_or_block arg fail lam
+      )
+    | _, _ ->
+        let lam_const = call_switcher loc fail arg_const_id consts
+        and lam_nonconst =
+          Llet (Alias, Pgenval, tag, arg0,
+          call_switcher loc fail arg_nonconst_id nonconsts)
+        in
+        test_int_or_block arg lam_const lam_nonconst
   in
   (lambda1, Jumps.union local_jumps total1)
 
@@ -3353,7 +3474,10 @@ let combine_regular_constructor loc arg cstr partial ctx def
 let combine_constructor loc arg pat_env cstr partial ctx def actions =
   match cstr.cstr_tag with
   | Cstr_extension _ ->
-    combine_extension_constructor loc arg pat_env partial ctx def actions
+      if is_strict cstr.cstr_attributes then
+        combine_extension_constructor_strict loc arg pat_env partial ctx def actions
+      else
+        combine_extension_constructor loc arg pat_env partial ctx def actions
   | _ ->
     combine_regular_constructor loc arg cstr partial ctx def actions
 
