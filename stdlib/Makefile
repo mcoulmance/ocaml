@@ -50,7 +50,7 @@ CAMLOPT=$(OCAMLRUN) $(OPTCOMPILER)
 include StdlibModules
 
 OBJS=$(addsuffix .cmo,$(STDLIB_MODULES))
-NOSTDLIB= camlinternalFormatBasics.cmo stdlib.cmo
+NOSTDLIB= camlinternalFormatBasics.cmo camlinternalExtension.cmo stdlib.cmo
 OTHERS=$(filter-out $(NOSTDLIB),$(OBJS))
 
 .PHONY: all

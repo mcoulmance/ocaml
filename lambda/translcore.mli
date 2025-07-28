@@ -39,6 +39,26 @@ val transl_extension_constructor: scopes:scopes ->
 
 val transl_scoped_exp : scopes:scopes -> expression -> lambda
 
+(** Initialization of dynamic match over extensible variants.
+    We separate the implementation in two function so that we
+    can lift the dispatch table initialization as much as possible
+ *)
+
+(* Transforms every Ldynswitch into a corresponding Lswitch, creating
+   an environment that will be used by [initialize_dynamic_switch_env]
+   to create the dispatch table. *)
+val initialize_dynamic_switch : lambda -> (Ident.t * lambda_dyn_switch) list * lambda
+
+(* Creates dispatch tables based on a given environment, applying variable
+   substitutions if needed. *)
+val initialize_dynamic_switch_env : ?subst:lambda Ident.Map.t option ->
+  (Ident.t * lambda_dyn_switch) list -> lambda -> lambda
+
+val extract_ctrs_to_init :
+  ?in_module:string -> label list -> (Ident.t * lambda_dyn_switch) list ->
+  (Ident.t * lambda_dyn_switch) list * (Ident.t * lambda_dyn_switch) list
+
+
 type error =
     Free_super_var
   | Unreachable_reached
@@ -54,7 +74,8 @@ val transl_module :
        module_expr -> lambda) ref
 val transl_struct_item :
       (scopes:scopes -> Ident.t list -> Path.t option ->
-       structure_item -> (Ident.t list -> lambda) -> lambda) ref
+       structure_item -> (Ident.t list -> (Ident.t * lambda_dyn_switch) list * lambda ) ->
+       (Ident.t * lambda_dyn_switch) list * lambda) ref
 val transl_object :
       (scopes:scopes -> Ident.t -> string list ->
        class_expr -> lambda) ref

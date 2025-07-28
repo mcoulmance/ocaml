@@ -1,0 +1,87 @@
+A
+A
+B
+B
+C(42)
+C(42)
+D(3.14)
+D(3.140000)
+E(A, 2)
+E(A, 2)
+E(E(E(C 42, 43), 44), 19)
+E(E(E(C(42), 43), 44), 19)
+#1
+A
+A
+B
+B
+C(42)
+C(42)
+D(3.14)
+D(3.140000)
+E(A, 2)
+E(A, 2)
+E(E(E(C 42, 43), 44), 19)
+E(E(E(C(42), 43), 44), 19)
+#2
+M.A
+M.A
+M.B
+M.B
+M.C(42)
+M.C(42)
+M.D(3.14)
+M.D(3.140000)
+M.E(M.A, 2)
+M.E(M.A, 2)
+M.E(M.E(E(unknown, 43), 44), 19)
+M.E(M.E(E(unknown, 43), 44), 19)
+#3
+M.A
+M.A
+M.B
+M.B
+M.C(42)
+M.C(42)
+M.D(3.14)
+M.D(3.140000)
+M.E(M.A, 2)
+M.E(M.A, 2)
+M.E(M.E(E(M.C 42, 43), 44), 19)
+M.E(M.E(E(unknown, 43), 44), 19)
+#4
+M.J.A
+M.J.A
+M.J.B
+M.J.B
+M.J.C(42)
+M.J.C(42)
+M.J.D(3.14)
+M.J.D(3.140000)
+M.J.E(M.A, 2)
+M.J.E(M.A, 2)
+M.E(E(unknown, 19)
+M.E(E(unknown, 44), 19)
+#5
+M1.A (rebinded by F1.A)
+F1.A
+M1.B(42) (rebinded by F2.B)
+F1.B(42)
+#6
+F1.A
+F1.A
+F1.B(18)
+F1.B(18)
+F1.C
+F1.C
+F1.D(89)
+F1.D(89)
+#7
+F2.A (rebinded by F1.A)
+F1.A
+F2.B(18) (rebinded by F1.B)
+F1.B(18)
+F2.C
+F2.C
+F2.D(89)
+F2.D(89)

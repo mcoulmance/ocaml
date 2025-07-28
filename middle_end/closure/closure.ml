@@ -1138,6 +1138,8 @@ let rec close ({ backend; fenv; cenv ; mutable_vars } as env) lam =
             Ucatch (i,[],ubody,uhandler),Value_unknown
           else fn fail
       end
+  | Ldynswitch _ ->
+      fatal_error "Closure.close: uninitialized dynamic switch"
   | Lstringswitch(arg,sw,d,_) ->
       let uarg,_ = close env arg in
       let usw =

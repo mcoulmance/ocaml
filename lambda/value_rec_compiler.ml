@@ -198,6 +198,8 @@ let compute_static_size lam =
         | Some fail -> [0 (* ignored *), fail]
       in
       compute_and_join_sizes_switch env [sw.sw_consts; sw.sw_blocks; fail_case]
+    | Ldynswitch _ ->
+        Misc.fatal_error "Value_rec_compiler.compute_static_size: uninitialized dynamic switch"
     | Lstringswitch (_, cases, fail, _) ->
       let fail_case =
         match fail with
@@ -555,6 +557,8 @@ let rec split_static_function block_var local_idents lam :
     | _, Reachable _, Some (Reachable _) ->
       Misc.fatal_error "letrec: multiple functions"
     end
+  | Ldynswitch _ ->
+      Misc.fatal_error "Value_rec_compiler.split_static_function: uninitialized dynamic switch"
   | Lstringswitch (arg, arms, failaction, loc) ->
     let arms_res = rebuild_arms block_var local_idents arms in
     let failaction_res =

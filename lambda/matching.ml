@@ -1386,13 +1386,13 @@ let pm_free_variables { cases } =
     (fun (_, act) r -> Ident.Set.union (free_variables act) r)
     cases Ident.Set.empty
 
-let is_strict cstr =
+let has_attribute attr cstr =
   Option.is_some @@
-  List.find_opt (fun { Parsetree.attr_name; _ } -> attr_name.txt = "strict") cstr
+  List.find_opt (fun { Parsetree.attr_name; _ } -> attr_name.txt = attr) cstr
 
 (* Basic grouping predicates *)
 
-let can_group discr pat =
+let can_group ~dynamic discr pat =
   let open Patterns.Head in
   match (discr.pat_desc, (Simple.head pat).pat_desc) with
   | Any, Any
@@ -1412,7 +1412,7 @@ let can_group discr pat =
          submatrix for each syntactically-distinct constructor (with a threading
          of exits such that each submatrix falls back to the
          potentially-compatible submatrices below it).  *)
-      Path.same p1 p2 || is_strict cstr_attributes
+      Path.same p1 p2 || dynamic || has_attribute "strict" cstr_attributes
   | Construct _, Construct _
   | Tuple _, (Tuple _ | Any)
   | Record _, (Record _ | Any)
@@ -1583,7 +1583,7 @@ let as_matrix cases =
 
 *)
 
-let rec split_or (cls : Half_simple.clause list) args def =
+let rec split_or ~dynamic (cls : Half_simple.clause list) args def =
   let rec do_split (rev_before : Simple.clause list) rev_ors rev_no = function
     | [] ->
         cons_next (List.rev rev_before) (List.rev rev_ors) (List.rev rev_no)
@@ -1613,12 +1613,12 @@ let rec split_or (cls : Half_simple.clause list) args def =
           (Default_environment.cons matrix idef def, (idef, next) :: nexts)
     in
     match yesor with
-    | [] -> split_no_or yes args def nexts
+    | [] -> split_no_or ~dynamic yes args def nexts
     | _ -> precompile_or yes yesor args def nexts
   in
   do_split [] [] [] cls
 
-and split_no_or cls args def k =
+and split_no_or ~dynamic cls args def k =
   (* We split the remaining clauses in as few pms as possible while maintaining
      the property stated earlier (cf. {1. Precompilation}), i.e. for
      any pm in the result, it is possible to decide for any two patterns
@@ -1650,7 +1650,7 @@ and split_no_or cls args def k =
            testsuite/tests/basic/patmatch_split_no_or.ml *)
         collect group_discr rev_yes (cl :: rev_no) []
     | (((p, _), _) as cl) :: rem ->
-        if can_group group_discr p && safe_before cl rev_no then
+        if can_group ~dynamic group_discr p && safe_before cl rev_no then
           collect group_discr (cl :: rev_yes) rev_no rem
         else if should_split group_discr then (
           assert (rev_no = []);
@@ -1664,7 +1664,7 @@ and split_no_or cls args def k =
   and insert_split group_discr yes no def k =
     let precompile_group =
       match group_discr.pat_desc with
-      | Patterns.Head.Any -> precompile_var
+      | Patterns.Head.Any -> precompile_var ~dynamic
       | _ -> do_not_precompile
     in
     match no with
@@ -1684,7 +1684,7 @@ and split_no_or cls args def k =
   in
   split cls
 
-and precompile_var args cls def k =
+and precompile_var ~dynamic args cls def k =
   (* Strategy: pop the first column,
      precompile the rest, add a PmVar to all precompiled submatrices.
 
@@ -1711,7 +1711,7 @@ and precompile_var args cls def k =
               cls
           and var_def = Default_environment.pop_column def in
           let { me = first; matrix }, nexts =
-            split_or var_cls var_args var_def
+            split_or ~dynamic var_cls var_args var_def
           in
           (* Compute top information *)
           match nexts with
@@ -1909,13 +1909,13 @@ let dbg_split_and_precompile pm next nexts =
       ();
   )
 
-let split_and_precompile_simplified pm =
-  let { me = next }, nexts = split_no_or pm.cases pm.args pm.default [] in
+let split_and_precompile_simplified ~dynamic pm =
+  let { me = next }, nexts = split_no_or ~dynamic pm.cases pm.args pm.default [] in
   dbg_split_and_precompile pm next nexts;
   (next, nexts)
 
-let split_and_precompile_half_simplified pm =
-  let { me = next }, nexts = split_or pm.cases pm.args pm.default in
+let split_and_precompile_half_simplified ~dynamic pm =
+  let { me = next }, nexts = split_or ~dynamic pm.cases pm.args pm.default in
   dbg_split_and_precompile pm next nexts;
   (next, nexts)
 
@@ -3360,6 +3360,44 @@ let combine_extension_constructor_strict loc arg pat_env partial ctx def
   in
   (lambda1, Jumps.union local_jumps total1)
 
+let combine_extension_constructor_dynamic loc arg pat_env partial ctx def
+    (descr_lambda_list, total1, _pats) =
+  let fail, local_jumps = mk_failaction_neg partial ctx def in
+  let pats = descr_lambda_list |>
+    List.map (fun (cstr, act) ->
+      match cstr.cstr_tag with
+        | Cstr_extension (path, _) -> (path, act)
+        | _                        -> assert false)
+  in
+  let default, pats =
+    match fail, pats with
+      | Some fail, _ ->
+          fail, pats
+      | None, (_, act) :: rem ->
+          act, rem
+      | _ -> assert false
+  in
+  let (table, lambda, length) =
+    List.fold_right
+      (fun (path, act) (env, pats, id) ->
+        (path, id) :: env, (id, act) :: pats, id + 1)
+      pats
+      ([], [], 1)
+  in
+  let lambda1 =
+    Ldynswitch
+      ( arg,
+        { dsw_table = table;
+          dsw_env = pat_env;
+          dsw_numcase = length;
+          dsw_case = lambda;
+          dsw_default = default
+        },
+        loc)
+  in
+
+  (lambda1, Jumps.union local_jumps total1)
+
 let combine_regular_constructor loc arg cstr partial ctx def
     (descr_lambda_list, total1, pats) =
   let tag_lambda (cstr, act) = (cstr.cstr_tag, act) in
@@ -3471,10 +3509,12 @@ let combine_regular_constructor loc arg cstr partial ctx def
   in
   (lambda1, Jumps.union local_jumps total1)
 
-let combine_constructor loc arg pat_env cstr partial ctx def actions =
+let combine_constructor ~dynamic loc arg pat_env cstr partial ctx def actions =
   match cstr.cstr_tag with
+  | Cstr_extension _ when dynamic ->
+      combine_extension_constructor_dynamic loc arg pat_env partial ctx def actions
   | Cstr_extension _ ->
-      if is_strict cstr.cstr_attributes then
+      if has_attribute "strict" cstr.cstr_attributes then
         combine_extension_constructor_strict loc arg pat_env partial ctx def actions
       else
         combine_extension_constructor loc arg pat_env partial ctx def actions
@@ -3790,14 +3830,14 @@ let arg_to_var arg cls =
    Output: a lambda term, a jump summary {..., exit number -> context, ... }
 *)
 
-let rec compile_match ~scopes repr partial ctx
+let rec compile_match ~scopes ~dynamic repr partial ctx
     (m : (args, initial_clause) pattern_matching) : lambda * Jumps.t =
   match m.cases with
   | ([], action) :: rem ->
       let res =
         if is_guarded action then
           let lambda, total =
-            compile_match ~scopes None partial ctx { m with cases = rem }
+            compile_match ~scopes ~dynamic None partial ctx { m with cases = rem }
           in
           (event_branch repr (patch_guarded lambda action), total)
         else
@@ -3807,10 +3847,10 @@ let rec compile_match ~scopes repr partial ctx
         (fun ppf -> if is_guarded action then Format.fprintf ppf " (guarded)");
       res
   | nonempty_cases ->
-      compile_match_nonempty ~scopes repr partial ctx
+      compile_match_nonempty ~scopes ~dynamic repr partial ctx
         { m with cases = map_on_rows Non_empty_row.of_initial nonempty_cases }
 
-and compile_match_nonempty ~scopes repr partial ctx
+and compile_match_nonempty ~scopes ~dynamic repr partial ctx
     (m : (args, Typedtree.pattern Non_empty_row.t clause) pattern_matching) =
   match m with
   | { cases = []; args = [] } ->
@@ -3825,15 +3865,15 @@ and compile_match_nonempty ~scopes repr partial ctx
         let cases = List.map (half_simplify_nonempty ~arg:(Lvar v)) m.cases in
         let m = { m with args; cases } in
         let first_match, rem =
-          split_and_precompile_half_simplified m in
-        combine_handlers ~scopes repr partial ctx first_match rem
+          split_and_precompile_half_simplified ~dynamic m in
+        combine_handlers ~scopes ~dynamic repr partial ctx first_match rem
       )
   | _ -> assert false
 
-and compile_match_simplified ~scopes repr partial ctx
+and compile_match_simplified ~scopes ~dynamic repr partial ctx
     (m : (split_args, Simple.clause) pattern_matching) =
-  let first_match, rem = split_and_precompile_simplified m in
-  combine_handlers ~scopes repr partial ctx first_match rem
+  let first_match, rem = split_and_precompile_simplified ~dynamic m in
+  combine_handlers ~scopes ~dynamic repr partial ctx first_match rem
 
 (* Note on [compute_arg_partial].
 
@@ -3991,18 +4031,18 @@ and bind_match_arg kind v arg (lam, jumps) =
   (bind_check kind v arg lam,
    jumps)
 
-and combine_handlers ~scopes repr partial ctx first_match rem =
+and combine_handlers ~scopes ~dynamic repr partial ctx first_match rem =
   comp_match_handlers
     (( if dbg () then
-         do_compile_matching_pr ~scopes
+         do_compile_matching_pr ~scopes ~dynamic
        else
-         do_compile_matching ~scopes
+         do_compile_matching ~scopes ~dynamic
      )
        repr)
     partial ctx first_match rem
 
 (* verbose version of do_compile_matching, for debug *)
-and do_compile_matching_pr ~scopes repr partial ctx x =
+and do_compile_matching_pr ~scopes ~dynamic repr partial ctx x =
   debugf
     "@[<v>MATCH %a\
      @,%a"
@@ -4012,7 +4052,7 @@ and do_compile_matching_pr ~scopes repr partial ctx x =
     Context.pp ctx;
   debugf "@,@[<v 2>COMPILE:@,";
   let ((_, jumps) as r) =
-    try do_compile_matching ~scopes repr partial ctx x with
+    try do_compile_matching ~scopes ~dynamic repr partial ctx x with
     | exn ->
         debugf "EXN (%s)@]@]" (Printexc.to_string exn);
         raise exn
@@ -4022,7 +4062,7 @@ and do_compile_matching_pr ~scopes repr partial ctx x =
   debugf "@]";
   r
 
-and do_compile_matching ~scopes repr partial ctx pmh =
+and do_compile_matching ~scopes ~dynamic repr partial ctx pmh =
   match pmh with
   | Pm pm -> (
       let first = pm.args.first in
@@ -4048,10 +4088,11 @@ and do_compile_matching ~scopes repr partial ctx pmh =
       in
       let compile_test divide combine =
         compile_test
-          (compile_match ~scopes repr partial)
+          (compile_match ~scopes ~dynamic repr partial)
           arg_partial divide combine ctx pm
       in
       let open Patterns.Head in
+      let compile_no_test = compile_no_test ~dynamic in
       match ph.pat_desc with
       | Any ->
           compile_no_test
@@ -4073,7 +4114,7 @@ and do_compile_matching ~scopes repr partial ctx pmh =
       | Construct cstr ->
           compile_test
             (divide_constructor ~scopes)
-            (combine_constructor ploc arg ph.pat_env cstr arg_partial)
+            (combine_constructor ~dynamic ploc arg ph.pat_env cstr arg_partial)
       | Array _ ->
           let kind = Typeopt.array_pattern_kind pomega in
           compile_test
@@ -4090,19 +4131,19 @@ and do_compile_matching ~scopes repr partial ctx pmh =
     )
   | PmVar { inside = pmh } ->
       let lam, total =
-        do_compile_matching ~scopes repr partial (Context.lshift ctx) pmh
+        do_compile_matching ~scopes ~dynamic repr partial (Context.lshift ctx) pmh
       in
       (lam, Jumps.map Context.rshift total)
   | PmOr { body; handlers } ->
       let lam, total =
-        compile_match_simplified ~scopes repr partial ctx body in
-      compile_orhandlers (compile_match ~scopes repr partial)
+        compile_match_simplified ~scopes ~dynamic repr partial ctx body in
+      compile_orhandlers (compile_match ~scopes ~dynamic repr partial)
         lam total ctx handlers
 
-and compile_no_test ~scopes divide up_ctx repr partial ctx to_match =
+and compile_no_test ~scopes ~dynamic divide up_ctx repr partial ctx to_match =
   let { pm = this_match; ctx = this_ctx } = divide ctx to_match in
   let lambda, total =
-    compile_match ~scopes repr partial this_ctx this_match in
+    compile_match ~scopes ~dynamic repr partial this_ctx this_match in
   (lambda, Jumps.map up_ctx total)
 
 (* The entry points *)
@@ -4190,13 +4231,18 @@ let root_arg arg binding_kind =
   { arg; binding_kind; mut = Immutable }
 
 let compile_matching ~scopes loc ~failer repr arg pat_act_list partial =
+  let dynamic =
+    Option.is_some @@
+    List.find_opt (fun (pat, _) -> has_attribute "dynamic" pat.pat_attributes)
+      pat_act_list
+  in
   let args = [ root_arg arg Strict ] in
   let rows = map_on_rows (fun pat -> (pat, [])) pat_act_list in
   let handler =
     toplevel_handler ~scopes loc ~failer partial args rows
   in
   handler (fun partial pm ->
-    compile_match_nonempty ~scopes repr partial (Context.start 1) pm
+    compile_match_nonempty ~scopes ~dynamic repr partial (Context.start 1) pm
   )
 
 let for_function ~scopes loc repr param pat_act_list partial =
@@ -4284,17 +4330,22 @@ let rec map_return f = function
   | Lstaticcatch (l1, b, l2) ->
       Lstaticcatch (map_return f l1, b, map_return f l2)
   | Lswitch (s, sw, loc) ->
-      let map_cases cases =
-        List.map (fun (i, l) -> (i, map_return f l)) cases
-      in
       Lswitch
         ( s,
           { sw with
-            sw_consts = map_cases sw.sw_consts;
-            sw_blocks = map_cases sw.sw_blocks;
+            sw_consts = map_cases f sw.sw_consts;
+            sw_blocks = map_cases f sw.sw_blocks;
             sw_failaction = Option.map (map_return f) sw.sw_failaction
           },
           loc )
+  | Ldynswitch (s, sw, loc) ->
+      Ldynswitch
+        ( s,
+          { sw with
+            dsw_case = map_cases f sw.dsw_case;
+            dsw_default = map_return f sw.dsw_default
+          },
+          loc)
   | Lstringswitch (s, cases, def, loc) ->
       Lstringswitch
         ( s,
@@ -4305,6 +4356,10 @@ let rec map_return f = function
   | ( Lvar _ | Lmutvar _ | Lconst _ | Lapply _ | Lfunction _ | Lsend _ | Lprim _
     | Lwhile _ | Lfor _ | Lassign _ | Lifused _ ) as l ->
       f l
+
+and map_cases f cases =
+  List.map (fun (i, l) -> (i, map_return f l)) cases
+
 
 (* The 'opt' reference indicates if the optimization is worthy.
 
@@ -4396,11 +4451,20 @@ let for_let ~scopes loc param pat body =
 (* Easy case since variables are available *)
 let for_tupled_function ~scopes loc paraml pats_act_list partial =
   let args = List.map (fun id -> root_arg (Lvar id) Strict) paraml in
+  let dynamic =
+    Option.is_some @@
+    List.find_opt (fun (pats, _) ->
+      Option.is_some @@
+      List.find_opt (fun pat ->
+        has_attribute "dynamic" pat.pat_attributes)
+      pats)
+    pats_act_list
+  in
   let handler =
     toplevel_handler ~scopes loc ~failer:Raise_match_failure
       partial args pats_act_list in
   handler (fun partial pm ->
-    compile_match ~scopes None partial
+    compile_match ~scopes ~dynamic None partial
       (Context.start (List.length paraml)) pm
   )
 
@@ -4467,14 +4531,15 @@ let flatten_precompiled size args pmh =
    Hence it needs a fourth argument, which it ignores
 *)
 
-let compile_flattened ~scopes repr partial ctx pmh =
+let compile_flattened ~scopes ~dynamic repr partial ctx pmh =
   match pmh with
-  | FPm pm -> compile_match_nonempty ~scopes repr partial ctx pm
+  | FPm pm -> compile_match_nonempty ~scopes ~dynamic repr partial ctx pm
   | FPmOr { body = b; handlers = hs } ->
-      let lam, total = compile_match_nonempty ~scopes repr partial ctx b in
-      compile_orhandlers (compile_match ~scopes repr partial) lam total ctx hs
+      let lam, total = compile_match_nonempty ~scopes ~dynamic repr partial ctx b in
+      compile_orhandlers (compile_match ~scopes ~dynamic repr partial) lam total ctx hs
 
 let do_for_multiple_match ~scopes loc idl pat_act_list partial =
+  let dynamic = false in (* TODO: maybe we can implement this ? *)
   let repr = None in
   let arg =
     let sloc = Scoped_location.of_location ~scopes loc in
@@ -4490,14 +4555,14 @@ let do_for_multiple_match ~scopes loc idl pat_act_list partial =
       { pm1 with
         cases = List.map (half_simplify_nonempty ~arg) pm1.cases }
     in
-    let next, nexts = split_and_precompile_half_simplified pm1_half in
+    let next, nexts = split_and_precompile_half_simplified ~dynamic pm1_half in
     let size = List.length idl in
     let args = List.map (fun id -> root_arg (Lvar id) Alias) idl in
     let flat_next = flatten_precompiled size args next
     and flat_nexts =
       List.map (fun (e, pm) -> (e, flatten_precompiled size args pm)) nexts
     in
-    comp_match_handlers (compile_flattened ~scopes repr) partial
+    comp_match_handlers (compile_flattened ~scopes ~dynamic repr) partial
       (Context.start size) flat_next flat_nexts
   )
 

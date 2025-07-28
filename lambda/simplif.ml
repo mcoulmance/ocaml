@@ -67,6 +67,8 @@ let rec eliminate_ref id = function
          sw_failaction =
             Option.map (eliminate_ref id) sw.sw_failaction; },
         loc)
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.eliminate_ref: uninitialized dynamic switch"
   | Lstringswitch(e, sw, default, loc) ->
       Lstringswitch
         (eliminate_ref id e,
@@ -143,6 +145,8 @@ let simplify_exits lam =
       count ~try_depth l;
       List.iter (fun (_, l) -> count ~try_depth l) sw.sw_consts;
       List.iter (fun (_, l) -> count ~try_depth l) sw.sw_blocks
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.simplify_exists: uninitialized dynamic switch"
   | Lstringswitch(l, sw, d, _) ->
       count ~try_depth l;
       List.iter (fun (_, l) -> count ~try_depth l) sw;
@@ -270,6 +274,8 @@ let simplify_exits lam =
          {sw with sw_consts = new_consts ; sw_blocks = new_blocks;
                   sw_failaction = new_fail},
          loc)
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.simplif: uninitialized dynamic switch"
   | Lstringswitch(l,sw,d,loc) ->
       Lstringswitch
         (simplif ~try_depth l,List.map (fun (s,l) -> s,simplif ~try_depth l) sw,
@@ -440,6 +446,8 @@ let simplify_lets lam =
       count bv l;
       List.iter (fun (_, l) -> count bv l) sw.sw_consts;
       List.iter (fun (_, l) -> count bv l) sw.sw_blocks
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.simplify_lets: uninitialized dynamic switch"
   | Lstringswitch(l, sw, d, _) ->
       count bv l ;
       List.iter (fun (_, l) -> count bv l) sw ;
@@ -592,6 +600,8 @@ let simplify_lets lam =
          {sw with sw_consts = new_consts ; sw_blocks = new_blocks;
                   sw_failaction = new_fail},
          loc)
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.simplif: uninitialized dynamic switch"
   | Lstringswitch (l,sw,d,loc) ->
       Lstringswitch
         (simplif l,List.map (fun (s,l) -> s,simplif l) sw,
@@ -668,6 +678,8 @@ let rec emit_tail_infos is_tail lambda =
       list_emit_tail_infos_fun snd is_tail sw.sw_consts;
       list_emit_tail_infos_fun snd is_tail sw.sw_blocks;
       Option.iter  (emit_tail_infos is_tail) sw.sw_failaction
+  | Ldynswitch _ ->
+      Misc.fatal_error "Simplif.emit_tail_infos: uninitialized dynamic switch"
   | Lstringswitch (lam, sw, d, _) ->
       emit_tail_infos false lam;
       List.iter

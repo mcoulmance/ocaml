@@ -300,6 +300,7 @@ type lambda =
   | Lletrec of rec_binding list * lambda
   | Lprim of primitive * lambda list * scoped_location
   | Lswitch of lambda * lambda_switch * scoped_location
+  | Ldynswitch of lambda * lambda_dyn_switch * scoped_location
 (* switch on strings, clauses are sorted by string order,
    strings are pairwise distinct *)
   | Lstringswitch of
@@ -348,6 +349,13 @@ and lambda_switch =
     sw_numblocks: int;                  (* Number of tag block cases *)
     sw_blocks: (int * lambda) list;     (* Tag block cases *)
     sw_failaction : lambda option}      (* Action to take if failure *)
+
+and lambda_dyn_switch =
+  { dsw_table : (Path.t * int) list;    (* Mapping from extension_constructor to identifier *)
+    dsw_env : Env.t;                    (* Switch environment *)
+    dsw_numcase : int;                  (* Number of cases *)
+    dsw_case : (int * lambda) list;     (* Cases (block & consts) *)
+    dsw_default : lambda }              (* Action to take when failure *)
 
 and lambda_event =
   { lev_loc: scoped_location;

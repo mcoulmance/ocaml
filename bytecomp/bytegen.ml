@@ -911,6 +911,8 @@ let rec comp_expr stack_info env exp sz cont =
         lbl_consts.(i) <- lbls.(act_consts.(i))
       done;
       comp_expr stack_info env arg sz (Kswitch(lbl_consts, lbl_blocks) :: !c)
+  | Ldynswitch _ ->
+      fatal_error "Bytegen.comp_expr: uninitialized dynamic switch"
   | Lstringswitch (arg,sw,d,loc) ->
       comp_expr stack_info env
         (Matching.expand_stringswitch loc arg sw d) sz cont

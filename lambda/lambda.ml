@@ -309,6 +309,7 @@ type lambda =
   | Lletrec of rec_binding list * lambda
   | Lprim of primitive * lambda list * scoped_location
   | Lswitch of lambda * lambda_switch * scoped_location
+  | Ldynswitch of lambda * lambda_dyn_switch * scoped_location
   | Lstringswitch of
       lambda * (string * lambda) list * lambda option * scoped_location
   | Lstaticraise of int * lambda list
@@ -350,6 +351,13 @@ and lambda_switch =
     sw_numblocks: int;
     sw_blocks: (int * lambda) list;
     sw_failaction : lambda option}
+
+and lambda_dyn_switch =
+  { dsw_table : (Path.t * int) list;
+    dsw_env : Env.t;
+    dsw_numcase : int;
+    dsw_case : (int * lambda) list;
+    dsw_default : lambda }
 
 and lambda_event =
   { lev_loc: scoped_location;
@@ -460,6 +468,8 @@ let make_key e =
         Lprim (p,tr_recs env es, Loc_unknown)
     | Lswitch (e,sw,loc) ->
         Lswitch (tr_rec env e,tr_sw env sw,loc)
+    | Ldynswitch _ ->
+        raise Not_simple
     | Lstringswitch (e,sw,d,_) ->
         Lstringswitch
           (tr_rec env e,
@@ -553,6 +563,10 @@ let shallow_iter ~tail ~non_tail:f = function
       List.iter (fun (_key, case) -> tail case) sw.sw_consts;
       List.iter (fun (_key, case) -> tail case) sw.sw_blocks;
       iter_opt tail sw.sw_failaction
+  | Ldynswitch (arg, sw, _) ->
+      f arg;
+      List.iter (fun (_, case) -> tail case) sw.dsw_case;
+      iter_opt tail (Some sw.dsw_default)
   | Lstringswitch (arg,cases,default,_) ->
       f arg ;
       List.iter (fun (_,act) -> tail act) cases ;
@@ -621,6 +635,8 @@ let rec free_variables = function
       | None -> set
       | Some failaction -> Ident.Set.union set (free_variables failaction)
       end
+  | Ldynswitch _ ->
+      fatal_error "Lambda.free_variables: uninitialized dynamic switch"
   | Lstringswitch (arg,cases,default,_) ->
       let set =
         free_variables_list (free_variables arg)
@@ -822,6 +838,11 @@ let build_substs update_env ?(freshen_bound_variables = false) s =
                         sw_blocks = List.map (subst_case s l) sw.sw_blocks;
                         sw_failaction = subst_opt s l sw.sw_failaction; },
                 loc)
+    | Ldynswitch (arg, sw, loc) ->
+        Ldynswitch(subst s l arg,
+                     {sw with dsw_case = List.map (subst_case s l) sw.dsw_case;
+                              dsw_default = subst s l sw.dsw_default },
+                   loc)
     | Lstringswitch (arg,cases,default,loc) ->
         Lstringswitch
           (subst s l arg,
@@ -951,6 +972,8 @@ let shallow_map f = function
                  sw_failaction = Option.map f sw.sw_failaction;
                },
                loc)
+  | Ldynswitch _ ->
+      fatal_error "Lambda.shallow_map: uninitialized dynamic switch"
   | Lstringswitch (e, sw, default, loc) ->
       Lstringswitch (
         f e,
