@@ -36,22 +36,22 @@ type t += A | B | C of int | D of float | E of t * int
    are merged by the compiler *)
 
 let rec foo1 x =
-  match x with
-  | A [@dynamic] -> "A"
+  (match x with
+  | A -> "A"
   | B -> "B"
   | C i -> Printf.sprintf "C(%d)" i
   | D f -> Printf.sprintf "D(%f)" f
   | E (t, i) -> Printf.sprintf "E(%s, %d)" (foo1 t) i
-  | _ -> "unknown"
+  | _ -> "unknown") [@dynamic]
 
 and foo2 x =
-  match x with
+  (match x with
   | A [@dynamic] -> 1
   | B -> 2
   | C i -> i
   | D f -> int_of_float f
   | E (t, i) -> (foo2 t) + i
-  | _ -> 0
+  | _ -> 0) [@dynamic]
 ;;
 [%%expect{|
 (let

@@ -30,7 +30,7 @@ val transl_apply: scopes:scopes
                   -> ?specialised:specialise_attribute
                   -> lambda -> (arg_label * apply_arg) list
                   -> scoped_location -> lambda
-val transl_let: scopes:scopes -> ?in_structure:bool -> rec_flag
+val transl_let: ?dynamic:bool -> scopes:scopes -> ?in_structure:bool -> rec_flag
                 -> value_binding list -> lambda -> lambda
 
 val transl_extension_constructor: scopes:scopes ->

@@ -185,6 +185,13 @@ let is_omitted = function
   | Arg _ -> false
   | Omitted () -> true
 
+let has_attribute name attrs =
+  Option.is_some @@
+    List.find_opt
+      (fun { Parsetree.attr_name; _ } -> attr_name.txt = name )
+      attrs
+
+
 let rec transl_exp ~scopes e =
   transl_exp1 ~scopes ~in_new_scope:false e
 
@@ -213,7 +220,7 @@ and transl_exp0 ~in_new_scope ~scopes e =
   | Texp_constant cst ->
       Lconst(Const_base cst)
   | Texp_let(rec_flag, pat_expr_list, body) ->
-      transl_let ~scopes rec_flag pat_expr_list
+      transl_let ~dynamic:(has_attribute "dynamic" e.exp_attributes) ~scopes rec_flag pat_expr_list
         (event_before ~scopes body (transl_exp ~scopes body))
   | Texp_function (params, body) ->
       let scopes =
@@ -280,8 +287,9 @@ and transl_exp0 ~in_new_scope ~scopes e =
         exn_pat_expr_list eff_pat_expr_list
   | Texp_try(body, pat_expr_list, []) ->
       let id = Typecore.name_cases "exn" pat_expr_list in
+      let dynamic = has_attribute "dynamic" e.exp_attributes in
       Ltrywith(transl_exp ~scopes body, id,
-               Matching.for_trywith ~scopes e.exp_loc (Lvar id)
+               Matching.for_trywith ~dynamic ~scopes e.exp_loc (Lvar id)
                  (transl_cases_try ~scopes pat_expr_list))
   | Texp_try(body, exn_pat_expr_list, eff_pat_expr_list) ->
       transl_handler ~scopes e body None exn_pat_expr_list eff_pat_expr_list
@@ -572,7 +580,7 @@ and transl_exp0 ~in_new_scope ~scopes e =
          }
   | Texp_letop{let_; ands; param; body; partial} ->
       event_after ~scopes e
-        (transl_letop ~scopes e.exp_loc e.exp_env let_ ands param body partial)
+        (transl_letop ~dynamic:(has_attribute "dynamic" e.exp_attributes) ~scopes e.exp_loc e.exp_env let_ ands param body partial)
   | Texp_unreachable ->
       raise (Error (e.exp_loc, Unreachable_reached))
   | Texp_struct_item (si, e) ->
@@ -749,7 +757,7 @@ and transl_apply ~scopes
    the function as taking each argument individually (in
    [trans_curried_function]).
 *)
-and transl_function_without_attributes ~scopes loc repr params body =
+and transl_function_without_attributes ~dynamic ~scopes loc repr params body =
   let return =
     match body with
     | Tfunction_body body ->
@@ -760,9 +768,9 @@ and transl_function_without_attributes ~scopes loc repr params body =
         (* With Camlp4/ppx, a pattern matching might be empty *)
         Pgenval
   in
-  transl_tupled_function ~scopes loc return repr params body
+  transl_tupled_function ~dynamic ~scopes loc return repr params body
 
-and transl_tupled_function ~scopes loc return repr params body =
+and transl_tupled_function ~dynamic ~scopes loc return repr params body =
   (* Cases are eligible for flattening if they belong to the only param. *)
   let eligible_cases =
     match params, body with
@@ -808,14 +816,14 @@ and transl_tupled_function ~scopes loc return repr params body =
         in
         let params = List.map fst tparams in
         ((Tupled, tparams, return),
-         Matching.for_tupled_function ~scopes loc params
+         Matching.for_tupled_function ~dynamic ~scopes loc params
            (transl_tupled_cases ~scopes pats_expr_list) partial)
     with Matching.Cannot_flatten ->
-      transl_curried_function ~scopes loc return repr params body
+      transl_curried_function ~dynamic ~scopes loc return repr params body
       end
-  | _ -> transl_curried_function ~scopes loc return repr params body
+  | _ -> transl_curried_function ~dynamic ~scopes loc return repr params body
 
-and transl_curried_function ~scopes loc return repr params body =
+and transl_curried_function ~dynamic ~scopes loc return repr params body =
   let cases_param, body =
     match body with
     | Tfunction_body body ->
@@ -835,7 +843,7 @@ and transl_curried_function ~scopes loc return repr params body =
               (value_kind pat.pat_env pat.pat_type) other_cases
         in
         let body =
-          Matching.for_function ~scopes cases_loc repr (Lvar param)
+          Matching.for_function ~dynamic ~scopes cases_loc repr (Lvar param)
             (transl_cases ~scopes cases) partial
         in
         Some (param, kind), body
@@ -848,7 +856,7 @@ and transl_curried_function ~scopes loc return repr params body =
       | Tparam_pat pat ->
           let kind = value_kind pat.pat_env pat.pat_type in
           let body =
-            Matching.for_function ~scopes param_loc None (Lvar param)
+            Matching.for_function ~dynamic ~scopes param_loc None (Lvar param)
               [ pat, body ]
               fp.fp_partial
           in
@@ -859,7 +867,7 @@ and transl_curried_function ~scopes loc return repr params body =
           in
           let body =
             Matching.for_optional_arg_default
-              ~scopes param_loc pat body ~default_arg ~param
+              ~dynamic ~scopes param_loc pat body ~default_arg ~param
           in
           (* The optional param is Pgenval as it's an option. *)
           body, (param, Pgenval) :: params)
@@ -893,11 +901,12 @@ and transl_curried_function ~scopes loc return repr params body =
   ((Curried, params, return), body)
 
 and transl_function ~scopes e params body =
+  let dynamic = has_attribute "dynamic" e.exp_attributes in
   let ((kind, params, return), body) =
     event_function ~scopes e
       (function repr ->
          let params, body = fuse_method_arity params body in
-         transl_function_without_attributes ~scopes e.exp_loc repr params body)
+         transl_function_without_attributes ~dynamic ~scopes e.exp_loc repr params body)
   in
   let attr = function_attribute_disallowing_arity_fusion in
   let loc = of_location ~scopes e.exp_loc in
@@ -938,7 +947,7 @@ and transl_bound_exp ~scopes ~in_structure pat expr =
   This complication allows choosing any compilation order for the
   bindings and body of let constructs.
 *)
-and transl_let ~scopes ?(in_structure=false) rec_flag pat_expr_list =
+and transl_let ?(dynamic=false) ~scopes ?(in_structure=false) rec_flag pat_expr_list =
   match rec_flag with
     Nonrecursive ->
       let rec transl = function
@@ -950,7 +959,7 @@ and transl_let ~scopes ?(in_structure=false) rec_flag pat_expr_list =
           let lam = Translattribute.add_function_attributes lam vb_loc attr in
           let mk_body = transl rem in
           fun body ->
-            Matching.for_let ~scopes pat.pat_loc lam pat (mk_body body)
+            Matching.for_let ~dynamic ~scopes pat.pat_loc lam pat (mk_body body)
       in transl pat_expr_list
   | Recursive ->
       let idlist =
@@ -1092,6 +1101,7 @@ and transl_atomic_loc ~scopes arg lbl =
   (arg, lbl)
 
 and transl_match ~scopes e arg pat_expr_list partial =
+  let dynamic = has_attribute "dynamic" e.exp_attributes in
   let rewrite_case (val_cases, exn_cases, static_handlers as acc)
         ({ c_lhs; c_guard; c_rhs } as case) =
     if c_rhs.exp_desc = Texp_unreachable then acc else
@@ -1161,7 +1171,7 @@ and transl_match ~scopes e arg pat_expr_list partial =
     let static_exception_id = next_raise_count () in
     Lstaticcatch
       (Ltrywith (Lstaticraise (static_exception_id, scrutinees), id,
-                 Matching.for_trywith ~scopes e.exp_loc (Lvar id) exn_cases),
+                 Matching.for_trywith ~dynamic ~scopes e.exp_loc (Lvar id) exn_cases),
        (static_exception_id, val_ids),
        handler)
   in
@@ -1169,7 +1179,7 @@ and transl_match ~scopes e arg pat_expr_list partial =
     match arg, exn_cases with
     | {exp_desc = Texp_tuple argl}, [] ->
       assert (static_handlers = []);
-      Matching.for_multiple_match ~scopes e.exp_loc
+      Matching.for_multiple_match ~dynamic ~scopes e.exp_loc
         (transl_list ~scopes (List.map snd argl)) val_cases partial
     | {exp_desc = Texp_tuple argl}, _ :: _ ->
         let argl = List.map snd argl in
@@ -1183,17 +1193,17 @@ and transl_match ~scopes e arg pat_expr_list partial =
         in
         let lvars = List.map (fun (id, _) -> Lvar id) val_ids in
         static_catch (transl_list ~scopes argl) val_ids
-          (Matching.for_multiple_match ~scopes e.exp_loc
+          (Matching.for_multiple_match ~dynamic ~scopes e.exp_loc
              lvars val_cases partial)
     | arg, [] ->
       assert (static_handlers = []);
-      Matching.for_function ~scopes e.exp_loc
+      Matching.for_function ~dynamic ~scopes e.exp_loc
         None (transl_exp ~scopes arg) val_cases partial
     | arg, _ :: _ ->
         let val_id = Typecore.name_pattern "val" (List.map fst val_cases) in
         let k = Typeopt.value_kind arg.exp_env arg.exp_type in
         static_catch [transl_exp ~scopes arg] [val_id, k]
-          (Matching.for_function ~scopes e.exp_loc
+          (Matching.for_function ~dynamic ~scopes e.exp_loc
              None (Lvar val_id) val_cases partial)
   in
   List.fold_left (fun body (static_exception_id, val_ids, handler) ->
@@ -1204,6 +1214,7 @@ and prim_alloc_stack =
   Pccall (Primitive.simple ~name:"caml_alloc_stack" ~arity:3 ~alloc:true)
 
 and transl_handler ~scopes e body val_caselist exn_caselist eff_caselist =
+  let dynamic = has_attribute "dynamic" e.exp_attributes in
   let val_fun =
     match val_caselist with
     | None ->
@@ -1215,7 +1226,7 @@ and transl_handler ~scopes e body val_caselist exn_caselist eff_caselist =
         let val_cases = transl_cases ~scopes val_caselist in
         let param = Typecore.name_cases "param" val_caselist in
         let body =
-          Matching.for_function ~scopes e.exp_loc None (Lvar param) val_cases
+          Matching.for_function ~dynamic ~scopes e.exp_loc None (Lvar param) val_cases
             partial
         in
         lfunction ~kind:Curried ~params:[param, Pgenval]
@@ -1225,7 +1236,7 @@ and transl_handler ~scopes e body val_caselist exn_caselist eff_caselist =
   let exn_fun =
     let exn_cases = transl_cases ~scopes exn_caselist in
     let param = Typecore.name_cases "exn" exn_caselist in
-    let body = Matching.for_trywith ~scopes e.exp_loc (Lvar param) exn_cases in
+    let body = Matching.for_trywith ~dynamic ~scopes e.exp_loc (Lvar param) exn_cases in
     lfunction ~kind:Curried ~params:[param, Pgenval] ~return:Pgenval
       ~attr:default_function_attribute ~loc:Loc_unknown ~body
   in
@@ -1235,7 +1246,7 @@ and transl_handler ~scopes e body val_caselist exn_caselist eff_caselist =
     let cont_tail = Ident.create_local "ktail" in
     let eff_cases = transl_cases ~scopes ~cont eff_caselist in
     let body =
-      Matching.for_handler ~scopes e.exp_loc (Lvar param) (Lvar cont)
+      Matching.for_handler ~dynamic ~scopes e.exp_loc (Lvar param) (Lvar cont)
         (Lvar cont_tail) eff_cases
     in
     lfunction ~kind:Curried
@@ -1259,7 +1270,7 @@ and transl_handler ~scopes e body val_caselist exn_caselist eff_caselist =
   Lprim(Prunstack, [alloc_stack; body_fun; arg],
         of_location ~scopes e.exp_loc)
 
-and transl_letop ~scopes loc env let_ ands param case partial =
+and transl_letop ~dynamic ~scopes loc env let_ ands param case partial =
   let rec loop prev_lam = function
     | [] -> prev_lam
     | and_ :: rest ->
@@ -1294,7 +1305,7 @@ and transl_letop ~scopes loc env let_ ands param case partial =
         (function repr ->
            let loc = case.c_rhs.exp_loc in
            let ghost_loc = { loc with loc_ghost = true } in
-           transl_function_without_attributes ~scopes loc repr []
+           transl_function_without_attributes ~dynamic ~scopes loc repr []
              (Tfunction_cases
                 { cases = [case]; param; partial; loc = ghost_loc;
                   exp_extra = None; attributes = []; }))

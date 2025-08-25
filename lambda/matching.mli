@@ -21,28 +21,28 @@ open Debuginfo.Scoped_location
 
 (* Entry points to match compiler *)
 val for_function:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         int ref option -> lambda -> (pattern * lambda) list -> partial ->
         lambda
 val for_trywith:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         lambda -> (pattern * lambda) list ->
         lambda
 val for_handler:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         lambda -> lambda -> lambda -> (pattern * lambda) list ->
         lambda
 val for_let:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         lambda -> pattern -> lambda ->
         lambda
 val for_multiple_match:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         lambda list -> (pattern * lambda) list -> partial ->
         lambda
 
 val for_tupled_function:
-        scopes:scopes -> Location.t ->
+        dynamic:bool -> scopes:scopes -> Location.t ->
         Ident.t list -> (pattern list * lambda) list -> partial ->
         lambda
 
@@ -58,7 +58,7 @@ val for_tupled_function:
    ]}
 *)
 val for_optional_arg_default:
-  scopes:scopes -> Location.t ->
+  dynamic:bool -> scopes:scopes -> Location.t ->
   pattern -> default_arg:lambda -> param:Ident.t -> lambda ->
   lambda
 

@@ -426,7 +426,7 @@ let rec build_object_init ~scopes cl_table obj params inh_init obj_init cl =
                    ~return:Pgenval
                    ~attr:default_function_attribute
                    ~loc:(of_location ~scopes pat.pat_loc)
-                   ~body:(Matching.for_function ~scopes pat.pat_loc
+                   ~body:(Matching.for_function ~dynamic:false ~scopes pat.pat_loc
                              None (Lvar param) [pat, rem] partial)
        in
        begin match obj_init with
@@ -747,7 +747,7 @@ let rec transl_class_rebind ~scopes obj_init cl vf =
                   ~return:Pgenval
                   ~attr:default_function_attribute
                   ~loc:(of_location ~scopes pat.pat_loc)
-                  ~body:(Matching.for_function ~scopes pat.pat_loc
+                  ~body:(Matching.for_function ~dynamic:false ~scopes pat.pat_loc
                             None (Lvar param) [pat, rem] partial)
       in
       (path, path_lam,

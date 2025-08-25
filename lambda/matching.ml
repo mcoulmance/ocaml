@@ -4230,12 +4230,7 @@ let root_arg arg binding_kind =
      immutable. *)
   { arg; binding_kind; mut = Immutable }
 
-let compile_matching ~scopes loc ~failer repr arg pat_act_list partial =
-  let dynamic =
-    Option.is_some @@
-    List.find_opt (fun (pat, _) -> has_attribute "dynamic" pat.pat_attributes)
-      pat_act_list
-  in
+let compile_matching ?(dynamic=false) ~scopes loc ~failer repr arg pat_act_list partial =
   let args = [ root_arg arg Strict ] in
   let rows = map_on_rows (fun pat -> (pat, [])) pat_act_list in
   let handler =
@@ -4245,12 +4240,12 @@ let compile_matching ~scopes loc ~failer repr arg pat_act_list partial =
     compile_match_nonempty ~scopes ~dynamic repr partial (Context.start 1) pm
   )
 
-let for_function ~scopes loc repr param pat_act_list partial =
-  compile_matching ~scopes loc ~failer:Raise_match_failure
+let for_function ~dynamic ~scopes loc repr param pat_act_list partial =
+  compile_matching ~dynamic ~scopes loc ~failer:Raise_match_failure
     repr param pat_act_list partial
 
 (* In the following two cases, exhaustiveness info is not available! *)
-let for_trywith ~scopes loc param pat_act_list =
+let for_trywith ~dynamic ~scopes loc param pat_act_list =
   (* Note: the failure action of [for_trywith] corresponds
      to an exception that is not matched by a try..with handler,
      and is thus reraised for the next handler in the stack.
@@ -4258,16 +4253,16 @@ let for_trywith ~scopes loc param pat_act_list =
      It is important to *not* include location information in
      the reraise (hence the [_noloc]) to avoid seeing this
      silent reraise in exception backtraces. *)
-  compile_matching ~scopes loc ~failer:(Reraise_noloc param)
+  compile_matching ~dynamic ~scopes loc ~failer:(Reraise_noloc param)
     None param pat_act_list Partial
 
-let for_handler ~scopes loc param cont cont_tail pat_act_list =
-  compile_matching ~scopes loc
+let for_handler ~dynamic ~scopes loc param cont cont_tail pat_act_list =
+  compile_matching ~dynamic ~scopes loc
     ~failer:(Reperform_noloc [param; cont; cont_tail])
     None param pat_act_list Partial
 
-let simple_for_let ~scopes loc param pat body =
-  compile_matching ~scopes loc ~failer:Raise_match_failure
+let simple_for_let ~dynamic ~scopes loc param pat body =
+  compile_matching ~dynamic ~scopes loc ~failer:Raise_match_failure
     None param [ (pat, body) ] Partial
 
 (* Optimize binding of immediate tuples
@@ -4376,7 +4371,7 @@ and map_cases f cases =
    can be costly (one unnecessary tuple allocation).
 *)
 
-let assign_pat ~scopes opt nraise catch_ids loc pat lam =
+let assign_pat ~dynamic ~scopes opt nraise catch_ids loc pat lam =
   let rec collect acc pat lam =
     match (pat.pat_desc, lam) with
     | Tpat_tuple patl, Lprim (Pmakeblock _, lams, _) ->
@@ -4410,10 +4405,10 @@ let assign_pat ~scopes opt nraise catch_ids loc pat lam =
     Lstaticraise (nraise, List.map fresh_var catch_ids)
   in
   let push_sublet code (_ids, pat, lam) =
-    simple_for_let ~scopes loc lam pat code in
+    simple_for_let ~dynamic ~scopes loc lam pat code in
   List.fold_left push_sublet exit rev_sublets
 
-let for_let ~scopes loc param pat body =
+let for_let ~dynamic ~scopes loc param pat body =
   match pat.pat_desc with
   | Tpat_any ->
       (* This eliminates a useless variable (and stack slot in bytecode)
@@ -4440,26 +4435,17 @@ let for_let ~scopes loc param pat body =
       in
       let ids = List.map (fun (id, _, _, _) -> id) catch_ids in
       let bind =
-        map_return (assign_pat ~scopes opt nraise ids loc pat) param in
+        map_return (assign_pat ~dynamic ~scopes opt nraise ids loc pat) param in
       if !opt then
         Lstaticcatch (bind, (nraise, ids_with_kinds), body)
       else
-        simple_for_let ~scopes loc param pat body
+        simple_for_let ~dynamic ~scopes loc param pat body
 
 (* Handling of tupled functions and matchings *)
 
 (* Easy case since variables are available *)
-let for_tupled_function ~scopes loc paraml pats_act_list partial =
+let for_tupled_function ~dynamic ~scopes loc paraml pats_act_list partial =
   let args = List.map (fun id -> root_arg (Lvar id) Strict) paraml in
-  let dynamic =
-    Option.is_some @@
-    List.find_opt (fun (pats, _) ->
-      Option.is_some @@
-      List.find_opt (fun pat ->
-        has_attribute "dynamic" pat.pat_attributes)
-      pats)
-    pats_act_list
-  in
   let handler =
     toplevel_handler ~scopes loc ~failer:Raise_match_failure
       partial args pats_act_list in
@@ -4538,8 +4524,7 @@ let compile_flattened ~scopes ~dynamic repr partial ctx pmh =
       let lam, total = compile_match_nonempty ~scopes ~dynamic repr partial ctx b in
       compile_orhandlers (compile_match ~scopes ~dynamic repr partial) lam total ctx hs
 
-let do_for_multiple_match ~scopes loc idl pat_act_list partial =
-  let dynamic = false in (* TODO: maybe we can implement this ? *)
+let do_for_multiple_match ~dynamic ~scopes loc idl pat_act_list partial =
   let repr = None in
   let arg =
     let sloc = Scoped_location.of_location ~scopes loc in
@@ -4579,13 +4564,13 @@ let bind_opt (v, eo) k =
   | None -> k
   | Some e -> Lambda.bind Strict v e k
 
-let for_multiple_match ~scopes loc paraml pat_act_list partial =
+let for_multiple_match ~dynamic ~scopes loc paraml pat_act_list partial =
   let v_paraml = List.map param_to_var paraml in
   let vl = List.map fst v_paraml in
   List.fold_right bind_opt v_paraml
-    (do_for_multiple_match ~scopes loc vl pat_act_list partial)
+    (do_for_multiple_match ~dynamic ~scopes loc vl pat_act_list partial)
 
-let for_optional_arg_default ~scopes loc pat ~default_arg ~param body =
+let for_optional_arg_default ~dynamic ~scopes loc pat ~default_arg ~param body =
   let supplied_or_default =
     transl_match_on_option
       (Lvar param)
@@ -4597,4 +4582,4 @@ let for_optional_arg_default ~scopes loc pat ~default_arg ~param body =
             [ Lvar param ],
             Loc_unknown))
   in
-  for_let ~scopes loc supplied_or_default pat body
+  for_let ~dynamic ~scopes loc supplied_or_default pat body
