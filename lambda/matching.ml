@@ -3244,13 +3244,7 @@ let merge_extension_cases arg consts nonconsts fail pat_env loc =
     in
     List.map
       (fun (hash, consts) ->
-        let lam =
-          match same_actions consts with
-          | Some lam ->
-              lam
-          | None ->
-              make_test_sequence consts
-        in
+        let lam = make_test_sequence consts in
         (hash, lam))
       pats
   in
